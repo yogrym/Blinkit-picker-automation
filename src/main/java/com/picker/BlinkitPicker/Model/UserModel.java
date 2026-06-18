@@ -43,7 +43,4 @@ public class UserModel {
 
     @NotNull
     private RoleEnum role;
-
-    // Used to lock the key permanently to a single browser/device
-    private String boundDeviceId;
 }
