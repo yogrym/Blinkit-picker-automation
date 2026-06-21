@@ -9,7 +9,10 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.picker.BlinkitPicker.Dto.LoginRequest;
 import com.picker.BlinkitPicker.Dto.LoginRespons;
+import com.picker.BlinkitPicker.Dto.VerifyOtpClientRequest;
 import com.picker.BlinkitPicker.Services.AuthServices;
+
+import jakarta.validation.Valid;
 
 @RestController
 @RequestMapping("/auth")
@@ -18,8 +21,13 @@ public class Auth {
     private AuthServices authService;
 
     @PostMapping("/login")
-    public ResponseEntity<LoginRespons> login(@RequestBody LoginRequest loginRequest) {
-        return ResponseEntity.ok(authService.login(loginRequest));
+    public ResponseEntity<?> sendOtp(@Valid @RequestBody LoginRequest loginRequest) {
+        return ResponseEntity.ok(authService.loginWithOtp(loginRequest));
+    }
+
+    @PostMapping("/verify")
+    public ResponseEntity<?> verifyOtp(@Valid @RequestBody VerifyOtpClientRequest verifyOtpClientRequest) {
+        return ResponseEntity.ok(authService.verifyLogin(verifyOtpClientRequest));
     }
 
 }

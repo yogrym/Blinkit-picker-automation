@@ -2,10 +2,15 @@ package com.picker.BlinkitPicker.Services;
 
 import java.util.Optional;
 
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 
 import com.picker.BlinkitPicker.Dto.LoginRequest;
-import com.picker.BlinkitPicker.Dto.LoginRespons;
+import com.picker.BlinkitPicker.Dto.OtpAuthRespons;
+import com.picker.BlinkitPicker.Dto.OtpValidRespons;
+import com.picker.BlinkitPicker.Dto.VerifyOtpClientRequest;
+import com.picker.BlinkitPicker.Dto.VerifyOtpRespons;
 import com.picker.BlinkitPicker.Model.UserModel;
 import com.picker.BlinkitPicker.Repository.UserRepo;
 
@@ -15,40 +20,53 @@ public class AuthServices {
     private final UserRepo userRepo;
     private final JwtServices jwtServices;
 
+    @Autowired
+    private WebClientServices webClientServices;
+
     public AuthServices(UserRepo userRepo, JwtServices jwtServices) {
         this.userRepo = userRepo;
         this.jwtServices = jwtServices;
     }
 
-    public LoginRespons login(LoginRequest loginRequest) {
+    public ResponseEntity<?> loginWithOtp(LoginRequest loginRequest) {
 
         Optional<UserModel> userOpt = userRepo.findByApiKey(loginRequest.getKey());
 
         if (userOpt.isEmpty()) {
-            return LoginRespons.builder()
-                    .message("Invalid API Key. User not found.")
-                    .build();
+            return ResponseEntity.status(400).body("Invalid API Key.");
         }
 
-        UserModel user = userOpt.get();
-
-        if (user.getExpiresAt() != null &&
-                user.getExpiresAt().isBefore(java.time.LocalDateTime.now())) {
-            return LoginRespons.builder()
-                    .message("Your plan has expired. Please contact admin to renew your plan.")
-                    .build();
+        OtpAuthRespons respons = webClientServices.sendOtpToUser(userOpt.get().getPhone());
+        if (respons.getChallengeName() == null) {
+            return ResponseEntity.status(500).body("Something went wrong while sending OTP.");
         }
 
-        String accessToken = jwtServices.generateAccessToken(user);
-        String refreshToken = jwtServices.generateRefreshToken(user);
+        return ResponseEntity.status(200).body(OtpValidRespons.builder()
+                .username(respons.getChallengeParameters().getUsername())
+                .session(respons.getSession())
+                .userId(userOpt.get().getId().toString())
+                .build());
 
-        user.setJwt(accessToken);
-        userRepo.save(user);
+    }
 
-        return LoginRespons.builder()
-                .token(accessToken)
-                .refreshtoken(refreshToken)
-                .message("Login successful.")
-                .build();
+    public ResponseEntity<?> verifyLogin(VerifyOtpClientRequest request) {
+
+        Optional<UserModel> userOpt = userRepo.findById(Long.parseLong(request.getUserId()));
+
+        if (userOpt.isEmpty()) {
+            return ResponseEntity.status(400).body("");
+        }
+
+        VerifyOtpRespons verifyRespons = webClientServices.verifyOtp(
+                request.getUserName(),
+                request.getAnswer(),
+                request.getSession(),
+                userOpt.get().getPhone());
+
+        if (verifyRespons.getAuthenticationResult() == null) {
+            return ResponseEntity.status(500).body("Something went wrong while verifying OTP.");
+        }
+
+        return ResponseEntity.status(200).body(verifyRespons);
     }
 }
