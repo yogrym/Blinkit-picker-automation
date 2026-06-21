@@ -42,6 +42,9 @@ public class UserModel {
     @Column(name = "jwt", nullable = true)
     private String jwt;
 
+    @Column(name = "refresh_token", nullable = true)
+    private String refreshToken;
+
     @Column(name = "api_key", nullable = true)
     private String apiKey;
 

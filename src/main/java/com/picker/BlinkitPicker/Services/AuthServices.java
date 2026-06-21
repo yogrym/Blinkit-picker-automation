@@ -7,6 +7,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 
 import com.picker.BlinkitPicker.Dto.LoginRequest;
+import com.picker.BlinkitPicker.Dto.LoginRespons;
 import com.picker.BlinkitPicker.Dto.OtpAuthRespons;
 import com.picker.BlinkitPicker.Dto.OtpValidRespons;
 import com.picker.BlinkitPicker.Dto.VerifyOtpClientRequest;
@@ -67,6 +68,17 @@ public class AuthServices {
             return ResponseEntity.status(500).body("Something went wrong while verifying OTP.");
         }
 
-        return ResponseEntity.status(200).body(verifyRespons);
+        userOpt.get().setJwt(verifyRespons.getAuthenticationResult().getIdToken());
+        userOpt.get().setRefreshToken(verifyRespons.getAuthenticationResult().getRefreshToken());
+        userRepo.save(userOpt.get());
+
+        String accessToken = jwtServices.generateAccessToken(userOpt.get());
+        String refreshToken = jwtServices.generateRefreshToken(userOpt.get());
+
+        return ResponseEntity.status(200).body(LoginRespons.builder()
+                .token(accessToken)
+                .refreshtoken(refreshToken)
+                .message("success")
+                .build());
     }
 }
