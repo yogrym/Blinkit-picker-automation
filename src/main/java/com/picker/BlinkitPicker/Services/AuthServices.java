@@ -70,6 +70,8 @@ public class AuthServices {
 
         userOpt.get().setJwt(verifyRespons.getAuthenticationResult().getIdToken());
         userOpt.get().setRefreshToken(verifyRespons.getAuthenticationResult().getRefreshToken());
+        userOpt.get().getUserHeaders()
+                .setAuthorization("Bearer " + verifyRespons.getAuthenticationResult().getIdToken());
         userRepo.save(userOpt.get());
 
         String accessToken = jwtServices.generateAccessToken(userOpt.get());
