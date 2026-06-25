@@ -39,10 +39,10 @@ public class UserModel {
     @Column(unique = true, name = "phone_number")
     private String phone;
 
-    @Column(name = "jwt", nullable = true)
+    @Column(name = "jwt", nullable = true, columnDefinition = "TEXT")
     private String jwt;
 
-    @Column(name = "refresh_token", nullable = true)
+    @Column(name = "refresh_token", nullable = true, columnDefinition = "TEXT")
     private String refreshToken;
 
     @Column(name = "api_key", nullable = true)

@@ -4,12 +4,13 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.picker.BlinkitPicker.Dto.LoginRequest;
-import com.picker.BlinkitPicker.Dto.LoginRespons;
 import com.picker.BlinkitPicker.Dto.VerifyOtpClientRequest;
+import com.picker.BlinkitPicker.Dto.RefreshTokenRequest;
 import com.picker.BlinkitPicker.Services.AuthServices;
 
 import jakarta.validation.Valid;
@@ -30,4 +31,20 @@ public class Auth {
         return ResponseEntity.ok(authService.verifyLogin(verifyOtpClientRequest));
     }
 
+    @PostMapping("/refresh")
+    public ResponseEntity<?> refresh(@Valid @RequestBody RefreshTokenRequest refreshTokenRequest) {
+        return authService.refreshAccessToken(refreshTokenRequest);
+    }
+
+    @PostMapping("/internal-token")
+    public ResponseEntity<?> internalToken(@RequestHeader("Authorization") String token) {
+
+        Boolean isRefreshed = authService.generateInternalToken(token);
+
+        if (isRefreshed == false) {
+            return ResponseEntity.status(401).body("Failed to refresh token");
+        }
+
+        return ResponseEntity.ok("success");
+    }
 }

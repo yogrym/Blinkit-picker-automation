@@ -1,8 +1,8 @@
 package com.picker.BlinkitPicker.Dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 import jakarta.validation.constraints.NotBlank;
-
 
 import lombok.Data;
 
@@ -10,5 +10,6 @@ import lombok.Data;
 public class LoginRequest {
 
     @NotBlank
-    private String key;
+    @JsonProperty("phone_number")
+    private String phoneNumber;
 }

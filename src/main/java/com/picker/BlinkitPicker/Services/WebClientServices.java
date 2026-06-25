@@ -4,10 +4,13 @@ import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 
+import com.picker.BlinkitPicker.Dto.CognitoRefreshTokenRequest;
+import com.picker.BlinkitPicker.Dto.CognitoRefreshTokenRespons;
 import com.picker.BlinkitPicker.Dto.OtpAuthRequest;
 import com.picker.BlinkitPicker.Dto.OtpAuthRespons;
 import com.picker.BlinkitPicker.Dto.VerifyOtpRequest;
@@ -20,6 +23,7 @@ import org.springframework.web.reactive.function.client.WebClientResponseExcepti
 @Service
 public class WebClientServices {
         @Autowired
+        @Qualifier("cognitoWebClient")
         private WebClient webClient;
 
         @Value("${cognito.clientId}")
@@ -74,7 +78,8 @@ public class WebClientServices {
                         return webClient.post()
                                         .uri(this.uri)
                                         .header("Content-Type", "application/x-amz-json-1.1")
-                                        .header("x-amz-target", "AWSCognitoIdentityProviderService.RespondToAuthChallenge")
+                                        .header("x-amz-target",
+                                                        "AWSCognitoIdentityProviderService.RespondToAuthChallenge")
                                         .header("amz-sdk-invocation-id", UUID.randomUUID().toString())
                                         .bodyValue(VerifyOtpRequest.builder()
                                                         .challengeName("CUSTOM_CHALLENGE")
@@ -102,6 +107,24 @@ public class WebClientServices {
                 } catch (WebClientRequestException e) {
                         throw new CognitoException(503, "Something went wrong while connecting: " + e.getMessage());
                 }
+        }
+
+        public CognitoRefreshTokenRespons refreshToken(String refreshToken) {
+                return webClient.post()
+                                .uri(this.uri)
+                                .header("Content-Type", "application/x-amz-json-1.1")
+                                .header("x-amz-target", "AWSCognitoIdentityProviderService.InitiateAuth")
+                                .header("amz-sdk-invocation-id", UUID.randomUUID().toString())
+                                .bodyValue(CognitoRefreshTokenRequest.builder()
+                                                .authFlow("REFRESH_TOKEN_AUTH")
+                                                .clientId(clientId)
+                                                .authParameters(CognitoRefreshTokenRequest.AuthParameters.builder()
+                                                                .refreshToken(refreshToken)
+                                                                .build())
+                                                .build())
+                                .retrieve()
+                                .bodyToMono(CognitoRefreshTokenRespons.class)
+                                .block();
         }
 
         private String toIndianE164PhoneNumber(String phoneNumber) {
