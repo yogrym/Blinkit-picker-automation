@@ -26,7 +26,7 @@ public class SpringSecurity {
         return http
                 .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/health-check/**", "/auth/**", "/error").permitAll()
+                        .requestMatchers("/health-check/**", "/auth/**", "/error", "/task/**").permitAll()
                         .requestMatchers("/admin/**").hasRole(RoleEnum.ADMIN.name())
                         .anyRequest().authenticated())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))

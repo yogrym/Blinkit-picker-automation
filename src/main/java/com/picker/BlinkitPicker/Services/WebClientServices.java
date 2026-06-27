@@ -8,14 +8,20 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Mono;
 
 import com.picker.BlinkitPicker.Dto.CognitoRefreshTokenRequest;
 import com.picker.BlinkitPicker.Dto.CognitoRefreshTokenRespons;
+import com.picker.BlinkitPicker.Dto.FetchSlotsRequest;
+import com.picker.BlinkitPicker.Dto.FetchSlotsResponse;
+import com.picker.BlinkitPicker.Dto.GlobalRespons;
 import com.picker.BlinkitPicker.Dto.OtpAuthRequest;
 import com.picker.BlinkitPicker.Dto.OtpAuthRespons;
 import com.picker.BlinkitPicker.Dto.VerifyOtpRequest;
 import com.picker.BlinkitPicker.Dto.VerifyOtpRespons;
+import com.picker.BlinkitPicker.Dto.Internal.BookSlotsRequest;
 import com.picker.BlinkitPicker.Exception.CognitoException;
+import com.picker.BlinkitPicker.Model.UserModel;
 import com.picker.BlinkitPicker.Util.ContextDataUtil;
 import org.springframework.web.reactive.function.client.WebClientRequestException;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
@@ -26,8 +32,18 @@ public class WebClientServices {
         @Qualifier("cognitoWebClient")
         private WebClient webClient;
 
+        @Autowired
+        @Qualifier("blinkitWebClient")
+        private WebClient blinkClient;
+
         @Value("${cognito.clientId}")
         private String clientId;
+
+        @Value("${list.slots.url}")
+        private String listSlotsUrl;
+
+        @Value("${book.slot.url}")
+        private String bookSlotsUrl;
 
         @Value("${cognito.poolId}")
         private String poolId;
@@ -138,6 +154,38 @@ public class WebClientServices {
                 }
 
                 return "+91" + digitsOnly;
+        }
+
+        public Mono<FetchSlotsResponse> getSlotsDetails(String cfBm, String requestId, String jwt,
+                        FetchSlotsRequest fetchSlotsRequest, String storeId) {
+
+                return blinkClient.post()
+                                .uri(listSlotsUrl)
+                                .header("requestid", requestId)
+                                .header("cookie", "__cf_bm=" + cfBm)
+                                .header("authorization", "Bearer " + jwt)
+                                .header("x-lat", fetchSlotsRequest.getLocationInfo().getXLong())
+                                .header("x-long", fetchSlotsRequest.getLocationInfo().getXLat())
+                                .header("site-id", storeId)
+                                .bodyValue(fetchSlotsRequest)
+                                .retrieve()
+                                .bodyToMono(FetchSlotsResponse.class);
+        }
+
+        public Mono<GlobalRespons> bookSlots(String cfBm, String requestId, String jwt,
+                        BookSlotsRequest bookSlotsRequest, String storeId, UserModel user) {
+
+                return blinkClient.post()
+                                .uri(bookSlotsUrl)
+                                .header("requestid", requestId)
+                                .header("cookie", "__cf_bm=" + cfBm)
+                                .header("authorization", "Bearer " + jwt)
+                                .header("x-lat", user.getUserHeaders().getXLat())
+                                .header("x-long", user.getUserHeaders().getXLong())
+                                .header("site-id", storeId)
+                                .bodyValue(bookSlotsRequest)
+                                .retrieve()
+                                .bodyToMono(GlobalRespons.class);
         }
 
 }

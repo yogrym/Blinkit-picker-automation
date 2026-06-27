@@ -5,12 +5,10 @@ import java.util.List;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 import jakarta.validation.constraints.NotBlank;
+import lombok.Data;
 
+@Data
 public class BookingRequest {
-
-    @NotBlank
-    @JsonProperty("store_id")
-    private Long storeId;
 
     @NotBlank
     @JsonProperty("dates")

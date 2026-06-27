@@ -28,7 +28,11 @@ public class FetchSlotsRequest {
         @JsonProperty("location_info")
         private Location locationInfo;
 
-        private static class Location {
+        @Data
+        @Builder
+        @AllArgsConstructor
+        @NoArgsConstructor
+        public static class Location {
 
             @NotBlank
             @JsonProperty("latitude")
@@ -39,10 +43,12 @@ public class FetchSlotsRequest {
             private String xLong;
 
             @JsonProperty("place_id")
-            private String placeId;
+            @Builder.Default
+            private String placeId = "";
 
             @JsonProperty("place_name")
-            private String placeName;
+            @Builder.Default
+            private String placeName = "";
         }
     }
 
