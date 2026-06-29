@@ -6,6 +6,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -13,6 +14,7 @@ import org.springframework.stereotype.Component;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class UserHeaderModel {
 
     private String authorization;
@@ -23,14 +25,20 @@ public class UserHeaderModel {
     private String accept;
 
     @JsonProperty("user-agent")
-    private String userAgent;
+    @Builder.Default
+    private String userAgent = "com.blinkitstoreops/156301 (Linux; Android 10; CPH1819)";
 
     @JsonProperty("x-device-id")
     private String xDeviceId;
 
-    private String employeeid;
+    @JsonProperty("employeeid")
+    private String employeeId;
 
-    private String userid;
+    @JsonProperty("employee-name")
+    private String employeeName;
+
+    @JsonProperty("user-id")
+    private String userId;
 
     @JsonProperty("site-id")
     private String siteId;

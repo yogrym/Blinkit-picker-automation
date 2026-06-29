@@ -14,4 +14,8 @@ public class BookingRequest {
     @JsonProperty("dates")
     private List<String> dates;
 
+    @NotBlank
+    @JsonProperty
+    private List<String> time;
+
 }

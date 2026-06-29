@@ -157,35 +157,76 @@ public class WebClientServices {
         }
 
         public Mono<FetchSlotsResponse> getSlotsDetails(String cfBm, String requestId, String jwt,
-                        FetchSlotsRequest fetchSlotsRequest, String storeId) {
+                        FetchSlotsRequest fetchSlotsRequest, String siteId, String employeeId, String userAgent,
+                        String xDeviceId, String role, String sessionToken, String httpSessionToken) {
+
+                System.out.println("[WebClient] Requesting getSlotsDetails with StoreID: " + siteId);
+
+                String authHeader = jwt != null && jwt.startsWith("Bearer ") ? jwt : "Bearer " + jwt;
 
                 return blinkClient.post()
                                 .uri(listSlotsUrl)
                                 .header("requestid", requestId)
                                 .header("cookie", "__cf_bm=" + cfBm)
-                                .header("authorization", "Bearer " + jwt)
-                                .header("x-lat", fetchSlotsRequest.getLocationInfo().getXLong())
-                                .header("x-long", fetchSlotsRequest.getLocationInfo().getXLat())
-                                .header("site-id", storeId)
+                                .header("authorization", authHeader)
+                                .header("user-agent", userAgent != null ? userAgent : "com.blinkitstoreops/156301 (Linux; Android 10; CPH1819)")
+                                .header("x-device-id", xDeviceId)
+                                .header("x-role", role)
+                                .header("x-employeeid", employeeId)
+                                .header("x-lat", String.valueOf(fetchSlotsRequest.getLocationInfo().getXLat()))
+                                .header("x-long", String.valueOf(fetchSlotsRequest.getLocationInfo().getXLong()))
+                                .header("http_session_token", httpSessionToken)
+                                .header("session-token", sessionToken)
+                                .header("site-id", siteId)
                                 .bodyValue(fetchSlotsRequest)
                                 .retrieve()
-                                .bodyToMono(FetchSlotsResponse.class);
+                                .bodyToMono(FetchSlotsResponse.class)
+                                .doOnNext(res -> System.out
+                                                .println("[WebClient] getSlotsDetails SUCCESS response received"))
+                                .doOnError(WebClientResponseException.class, e -> {
+                                        System.out.println("[WebClient - ERROR] getSlotsDetails HTTP Status: "
+                                                        + e.getStatusCode());
+                                        System.out.println("[WebClient - ERROR] getSlotsDetails Response Body: "
+                                                        + e.getResponseBodyAsString());
+                                });
         }
 
         public Mono<GlobalRespons> bookSlots(String cfBm, String requestId, String jwt,
-                        BookSlotsRequest bookSlotsRequest, String storeId, UserModel user) {
+                        BookSlotsRequest bookSlotsRequest, String storeId, UserModel user,
+                        String sessionToken, String httpSessionToken, String timesLog) {
+
+                System.out.println("[WebClient] Requesting bookSlots for StoreID: " + storeId + " with slots: "
+                                + bookSlotsRequest.getSlotIds() + " at times: " + timesLog);
+
+                String authHeader = jwt != null && jwt.startsWith("Bearer ") ? jwt : "Bearer " + jwt;
+                String userAgent = user.getUserHeaders().getUserAgent();
 
                 return blinkClient.post()
                                 .uri(bookSlotsUrl)
                                 .header("requestid", requestId)
                                 .header("cookie", "__cf_bm=" + cfBm)
-                                .header("authorization", "Bearer " + jwt)
+                                .header("authorization", authHeader)
+                                .header("user-agent", userAgent != null ? userAgent : "com.blinkitstoreops/156301 (Linux; Android 10; CPH1819)")
+                                .header("x-device-id", user.getUserHeaders().getXDeviceId())
+                                .header("x-role", user.getRole() != null ? user.getRole().toString() : "PICKER")
+                                .header("x-employeeid", user.getUserHeaders().getEmployeeId())
                                 .header("x-lat", user.getUserHeaders().getXLat())
                                 .header("x-long", user.getUserHeaders().getXLong())
+                                .header("http_session_token", httpSessionToken)
+                                .header("session-token", sessionToken)
                                 .header("site-id", storeId)
                                 .bodyValue(bookSlotsRequest)
                                 .retrieve()
-                                .bodyToMono(GlobalRespons.class);
+                                .bodyToMono(GlobalRespons.class)
+                                .doOnNext(res -> System.out.println("[WebClient] bookSlots SUCCESS response received"))
+                                .doOnError(WebClientResponseException.class, e -> {
+                                        System.out.println("[WebClient - ERROR] bookSlots HTTP Status: "
+                                                        + e.getStatusCode());
+                                        System.out.println("[WebClient - ERROR] bookSlots Response Body: "
+                                                        + e.getResponseBodyAsString());
+                                        System.out.println("[WebClient - ERROR] Failed to book slots: "
+                                                        + bookSlotsRequest.getSlotIds() + " at times: " + timesLog);
+                                });
         }
 
 }

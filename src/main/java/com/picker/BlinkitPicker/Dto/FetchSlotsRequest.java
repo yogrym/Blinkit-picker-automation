@@ -22,7 +22,7 @@ public class FetchSlotsRequest {
         private String endDate;
 
         @Builder.Default
-        private String status = "ALL";
+        private String status = "All";
 
         @NotBlank
         @JsonProperty("location_info")
@@ -34,13 +34,11 @@ public class FetchSlotsRequest {
         @NoArgsConstructor
         public static class Location {
 
-            @NotBlank
             @JsonProperty("latitude")
-            private String xLat;
+            private Double xLat;
 
-            @NotBlank
             @JsonProperty("longitude")
-            private String xLong;
+            private Double xLong;
 
             @JsonProperty("place_id")
             @Builder.Default

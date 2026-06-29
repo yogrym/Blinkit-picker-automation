@@ -40,6 +40,14 @@ public class GenerateCookie {
         return UUID.randomUUID().toString();
     }
 
+    public static String generateSessionToken() {
+        return UUID.randomUUID().toString();
+    }
+
+    public static String generateHttpSessionToken() {
+        return UUID.randomUUID().toString();
+    }
+
     /**
      * Computes the lowercase hex-encoded SHA-256 digest of the given input string.
      */

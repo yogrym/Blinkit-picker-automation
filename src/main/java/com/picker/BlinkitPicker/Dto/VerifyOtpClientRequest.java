@@ -23,4 +23,10 @@ public class VerifyOtpClientRequest {
 
     @JsonProperty("UserId")
     private String userId;
+
+    @JsonProperty("x_lat")
+    private String xLat;
+
+    @JsonProperty("x_long")
+    private String xLong;
 }

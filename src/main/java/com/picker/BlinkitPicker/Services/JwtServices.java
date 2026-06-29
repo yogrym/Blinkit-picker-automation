@@ -16,14 +16,18 @@ import java.util.Date;
 @Service
 public class JwtServices {
 
-    @Value("${jwt.secret}")
-    private String secret;
+    private final String secret;
+    private final long expirationMs;
+    private final long refreshExpirationMs;
 
-    @Value("${jwt.expiration}")
-    private long expirationMs;
-
-    @Value("${jwt.refresh-expiration}")
-    private long refreshExpirationMs;
+    public JwtServices(
+            @Value("${jwt.secret}") String secret,
+            @Value("${jwt.expiration}") long expirationMs,
+            @Value("${jwt.refresh-expiration}") long refreshExpirationMs) {
+        this.secret = secret;
+        this.expirationMs = expirationMs;
+        this.refreshExpirationMs = refreshExpirationMs;
+    }
 
     private Key getSigningKey() {
         return Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
@@ -63,7 +67,7 @@ public class JwtServices {
         return Jwts.parserBuilder()
                 .setSigningKey(getSigningKey())
                 .build()
-                .parseClaimsJws(token)
+                .parseClaimsJws(normalizeToken(token))
                 .getBody();
     }
 
@@ -88,5 +92,12 @@ public class JwtServices {
         } catch (JwtException | IllegalArgumentException e) {
             return true;
         }
+    }
+
+    private String normalizeToken(String token) {
+        if (token != null && token.startsWith("Bearer ")) {
+            return token.substring(7);
+        }
+        return token;
     }
 }

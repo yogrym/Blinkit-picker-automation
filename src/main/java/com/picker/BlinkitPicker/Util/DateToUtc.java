@@ -3,20 +3,17 @@ package com.picker.BlinkitPicker.Util;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
-import java.util.List;
-import java.util.stream.Collectors;
 
 public class DateToUtc {
 
     /**
-     * Converts a list of dates in "yyyy-MM-dd" format to UTC ISO-8601 format
-     * ("yyyy-MM-ddT02:30:00Z").
-     * This assumes the source time is 8:00 AM Indian Standard Time (IST), which
-     * equates to 2:30 AM UTC.
-     * 
-     * @param dates List of date strings in "yyyy-MM-dd" format
-     * @return List of converted UTC date-time strings
+     * Converts a date in "yyyy-MM-dd" format to the END date used by the Slots API.
+     *
+     * Bot logic: end_date = that day at 18:30:00 UTC (= midnight IST / start of IST day)
+     * Format: "yyyy-MM-ddT18:30:00.000Z"
      */
     public static String getDateToUtc(String date) {
         if (date == null || date.isBlank()) {
@@ -24,35 +21,79 @@ public class DateToUtc {
         }
         try {
             LocalDate localDate = LocalDate.parse(date.trim());
-            // 8:00 AM IST is 2:30 AM UTC
-            return localDate.atTime(8, 0)
-                    .atZone(ZoneId.of("Asia/Kolkata"))
-                    .toInstant()
-                    .toString();
+            return localDate.atTime(18, 30, 0)
+                    .atZone(ZoneId.of("UTC"))
+                    .format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"));
         } catch (Exception e) {
-            throw new IllegalArgumentException("Failed to parse date string: '" + date + "'. Expected format is yyyy-MM-dd", e);
+            throw new IllegalArgumentException(
+                    "Failed to parse date string: '" + date + "'. Expected format is yyyy-MM-dd", e);
         }
     }
 
     /**
-     * Subtracts exactly 1 day from the given UTC date-time string.
-     * Example: "2025-09-02T02:30:00Z" -> "2025-09-01T02:30:00Z"
-     * 
-     * @param utcDate The UTC date-time string in ISO-8601 format (e.g.,
-     *                "2025-09-02T02:30:00Z")
-     * @return The previous date-time string in UTC format
+     * Returns the START date (1 day before end_date) for the Slots API.
+     *
+     * Bot logic: start_date = (dt - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
      */
-    public static String getPrevDateToUtc(String utcDate) {
-        if (utcDate == null || utcDate.isBlank()) {
+    public static String getPrevDateToUtc(String endDateUtc) {
+        if (endDateUtc == null || endDateUtc.isBlank()) {
             return null;
         }
         try {
-            return Instant.parse(utcDate.trim())
+            String normalized = endDateUtc.replace(".000Z", "Z");
+            return Instant.parse(normalized)
                     .minus(1, ChronoUnit.DAYS)
                     .toString();
         } catch (Exception e) {
-            throw new IllegalArgumentException("Failed to parse UTC date string: '" + utcDate
-                    + "'. Expected format is ISO-8601 UTC (e.g., 2025-09-02T02:30:00Z)", e);
+            throw new IllegalArgumentException(
+                    "Failed to parse UTC date string: '" + endDateUtc + "'", e);
+        }
+    }
+
+    /**
+     * Decodes UTC start/end times to a friendly IST label like "6-8 pm".
+     * Used for logging/display only.
+     */
+    public static String decodeTime(String startTime, String endTime) {
+        if (startTime == null || endTime == null || startTime.isBlank() || endTime.isBlank()) {
+            return "";
+        }
+        try {
+            ZonedDateTime start = Instant.parse(startTime.trim()).atZone(ZoneId.of("Asia/Kolkata"));
+            ZonedDateTime end   = Instant.parse(endTime.trim()).atZone(ZoneId.of("Asia/Kolkata"));
+
+            int startHour = start.getHour();
+            int endHour   = end.getHour();
+            int start12   = startHour > 12 ? startHour - 12 : (startHour == 0 ? 12 : startHour);
+            int end12     = endHour   > 12 ? endHour   - 12 : (endHour   == 0 ? 12 : endHour);
+            String amPm   = startHour >= 12 ? "pm" : "am";
+
+            return start12 + "-" + end12 + " " + amPm;
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    /**
+     * Converts UTC start/end times to an IST "HH:MM-HH:MM" key string.
+     *
+     * Mirrors the bot's _slot_time_key(). User time_filter values are stored
+     * in this format (e.g., "06:00-08:00"). This key is used for slot matching.
+     *
+     * Example: UTC 00:30 → 02:30 becomes IST "06:00-08:00"
+     */
+    public static String slotTimeKey(String startTime, String endTime) {
+        if (startTime == null || endTime == null || startTime.isBlank() || endTime.isBlank()) {
+            return "";
+        }
+        try {
+            ZonedDateTime start = Instant.parse(startTime.trim()).atZone(ZoneId.of("Asia/Kolkata"));
+            ZonedDateTime end   = Instant.parse(endTime.trim()).atZone(ZoneId.of("Asia/Kolkata"));
+            return String.format("%02d:%02d-%02d:%02d",
+                    start.getHour(), start.getMinute(),
+                    end.getHour(),   end.getMinute());
+        } catch (Exception e) {
+            return "";
         }
     }
 }
