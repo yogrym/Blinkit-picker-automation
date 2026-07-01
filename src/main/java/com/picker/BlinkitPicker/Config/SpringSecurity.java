@@ -1,5 +1,7 @@
 package com.picker.BlinkitPicker.Config;
 
+import javax.management.relation.Role;
+
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -26,8 +28,9 @@ public class SpringSecurity {
         return http
                 .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/health-check/**", "/auth/**", "/error", "/task/**").permitAll()
-                        .requestMatchers("/admin/**").hasRole(RoleEnum.ADMIN.name())
+                        .requestMatchers("/health-check/**", "/auth/**", "/error", "/task/**", "/user-details")
+                        .permitAll()
+                        .requestMatchers("/admin/**").hasAnyRole(RoleEnum.ADMIN.name(), RoleEnum.MAINTAINER.name())
                         .anyRequest().authenticated())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .httpBasic(httpBasic -> httpBasic.disable())

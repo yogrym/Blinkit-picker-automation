@@ -48,6 +48,9 @@ public class UserModel {
     @Column(name = "api_key", nullable = true)
     private String apiKey;
 
+    @Column(name = "total_booked_slots", nullable = true)
+    private Long totalBookedSlots;
+
     @Builder.Default
     private Boolean expired = false;
 

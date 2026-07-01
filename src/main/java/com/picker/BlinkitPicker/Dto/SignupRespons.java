@@ -14,9 +14,4 @@ public class SignupRespons {
 
     private String message;
 
-    @JsonProperty("user_mobile")
-    private String userMobileNumber;
-
-    @JsonProperty("login_key")
-    private String loginKey;
 }

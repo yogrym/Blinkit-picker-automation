@@ -5,6 +5,7 @@ import org.springframework.stereotype.Service;
 
 import com.picker.BlinkitPicker.Dto.BookingRequest;
 import com.picker.BlinkitPicker.Dto.WorkerList;
+import com.picker.BlinkitPicker.Dto.Logs;
 import com.picker.BlinkitPicker.Model.UserModel;
 import com.picker.BlinkitPicker.Repository.UserRepo;
 import com.picker.BlinkitPicker.Util.SessionIdGenerator;
@@ -30,14 +31,15 @@ public class BookingServices {
     private WebClientServices webClientServices;
 
     public WorkerList.BookingData startBooking(String token, BookingRequest request) {
-        System.out.println("[API POST /task/booking] Received booking request for dates: " + request.getDates() + ", times: " + request.getTime());
+        System.out.println("[API POST /task/booking] Received booking request for dates: " + request.getDates()
+                + ", times: " + request.getTime());
 
         var claims = jwtServices.extractClaimsSafely(token);
         if (claims == null) {
             System.out.println("[API POST /task/booking] FAILED: JWT token is expired or invalid.");
             throw new RuntimeException("JWT token is expired or invalid");
         }
-        
+
         Long userId = claims.get("userId", Long.class);
         System.out.println("[API POST /task/booking] Authenticated userId: " + userId);
 
@@ -129,7 +131,7 @@ public class BookingServices {
         }
         Long userId = claims.get("userId", Long.class);
         UserModel user = userRepo.findById(userId).orElseThrow(() -> new RuntimeException("User not found"));
-        
+
         if (user.getUserHeaders() != null) {
             user.getUserHeaders().setSiteId(newStoreId);
             userRepo.save(user);
@@ -137,6 +139,24 @@ public class BookingServices {
         } else {
             throw new RuntimeException("User headers not configured for this user");
         }
+    }
+
+    public ConcurrentHashMap<String, WorkerList> getWorkerMap() {
+        return workerMap;
+    }
+
+    public List<Logs> getSessionLogs(String token, String sessionId) {
+        Long userId = jwtServices.extractUserId(token);
+        if (userId != null && workerMap.containsKey(userId.toString())) {
+            WorkerList userWorkers = workerMap.get(userId.toString());
+            if (userWorkers != null) {
+                BookingWorker worker = userWorkers.getWorker(sessionId);
+                if (worker != null) {
+                    return worker.getLogs();
+                }
+            }
+        }
+        return Collections.emptyList();
     }
 
 }

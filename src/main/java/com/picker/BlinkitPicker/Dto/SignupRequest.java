@@ -17,9 +17,8 @@ public class SignupRequest {
     @NotBlank(message = "Phone number is required")
     private String phone;
 
-    @NotBlank(message = "API Key is required")
-    @JsonProperty("api_key")
-    private String apiKey;
+    @NotBlank(message = "Plan is required")
+    private String plan;
 
     private RoleEnum role;
 }

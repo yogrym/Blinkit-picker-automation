@@ -1,5 +1,6 @@
 package com.picker.BlinkitPicker.Services;
 
+import java.time.LocalDateTime;
 import java.util.Optional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -30,10 +31,23 @@ public class AdminServices {
             request.setRole(RoleEnum.USER);
         }
 
+        LocalDateTime expiresAt = null;
+        if (request.getPlan() != null) {
+            String plan = request.getPlan().trim().toLowerCase();
+            LocalDateTime now = LocalDateTime.now();
+            if (plan.equals("weekly")) {
+                expiresAt = now.plusWeeks(1);
+            } else if (plan.equals("monthly")) {
+                expiresAt = now.plusMonths(1);
+            } else if (plan.equals("3 months") || plan.equals("3months")) {
+                expiresAt = now.plusMonths(3);
+            }
+        }
+
         UserModel user = UserModel.builder()
                 .phone(request.getPhone())
-                .apiKey(request.getApiKey())
                 .role(request.getRole())
+                .expiresAt(expiresAt)
                 .build();
 
         userRepo.save(user);
@@ -41,8 +55,6 @@ public class AdminServices {
         return SignupRespons.builder()
                 .status("success")
                 .message("user created successfully")
-                .userMobileNumber(user.getPhone())
-                .loginKey(user.getApiKey())
                 .build();
 
     }

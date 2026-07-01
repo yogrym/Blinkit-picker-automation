@@ -99,4 +99,15 @@ public class MainController {
         }
     }
 
+    @GetMapping("/logs/{sessionId}")
+    public ResponseEntity<?> getSessionLogs(@RequestHeader("Authorization") String token,
+            @PathVariable String sessionId) {
+        if (token != null && token.startsWith("Bearer ")) {
+            token = token.substring(7);
+        } else {
+            return ResponseEntity.status(401).body("Invalid token");
+        }
+        return ResponseEntity.ok(bookingServices.getSessionLogs(token, sessionId));
+    }
+
 }
