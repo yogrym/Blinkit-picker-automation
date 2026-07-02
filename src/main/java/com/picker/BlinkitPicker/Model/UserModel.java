@@ -7,6 +7,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.EnumType;
@@ -27,7 +28,11 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @Builder
 @Entity
-@Table(name = "users")
+@Table(name = "users", indexes = {
+        @Index(name = "idx_users_api_key", columnList = "api_key"),
+        @Index(name = "idx_users_expired", columnList = "expired"),
+        @Index(name = "idx_users_created_at", columnList = "created_at")
+})
 public class UserModel {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -53,6 +58,9 @@ public class UserModel {
 
     @Builder.Default
     private Boolean expired = false;
+
+    @Builder.Default
+    private Boolean blocked = false;
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)

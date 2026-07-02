@@ -96,6 +96,7 @@ public class GlobalServices {
                 .totalBookedSlots(user.getTotalBookedSlots() != null ? user.getTotalBookedSlots().intValue() : 0)
                 .remainingPlanValidity(remainingPlanValidity)
                 .phoneNumber(user.getPhone())
+                .blocked(user.getBlocked())
                 .expiresAt(expiresAt)
                 .role(user.getRole())
                 .isExpired(isExpired)

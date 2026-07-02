@@ -30,6 +30,8 @@ public class SpringSecurity {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/health-check/**", "/auth/**", "/error", "/task/**", "/user-details")
                         .permitAll()
+                        .requestMatchers("/admin/delete-user").hasRole(RoleEnum.ADMIN.name())
+                        .requestMatchers("/admin/change-role").hasRole(RoleEnum.ADMIN.name())
                         .requestMatchers("/admin/**").hasAnyRole(RoleEnum.ADMIN.name(), RoleEnum.MAINTAINER.name())
                         .anyRequest().authenticated())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))

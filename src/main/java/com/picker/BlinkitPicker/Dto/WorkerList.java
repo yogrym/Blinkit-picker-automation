@@ -34,8 +34,8 @@ public class WorkerList {
         return workerList;
     }
 
-    public void addBookingData(String sessionId, String firstDate, String lastDate) {
-        bookingDataMap.put(sessionId, new BookingData(sessionId, firstDate, lastDate));
+    public void addBookingData(Boolean isPaused, String sessionId, String firstDate, String lastDate) {
+        bookingDataMap.put(sessionId, new BookingData(isPaused, sessionId, firstDate, lastDate));
     }
 
     public List<BookingData> getAllBookingData() {
@@ -46,6 +46,8 @@ public class WorkerList {
     @AllArgsConstructor
     @NoArgsConstructor
     public static class BookingData {
+
+        private Boolean isPaused;
         private String sessionId;
         private String firstDate;
         private String lastDate;

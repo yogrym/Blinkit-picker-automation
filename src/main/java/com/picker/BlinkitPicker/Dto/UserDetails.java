@@ -52,6 +52,9 @@ public class UserDetails {
         @JsonProperty("is_expired")
         private Boolean isExpired;
 
+        @JsonProperty("is_blocked")
+        private Boolean blocked;
+
         @JsonProperty("booking_sessions")
         private List<WorkerList.BookingData> bookingSessions;
     }

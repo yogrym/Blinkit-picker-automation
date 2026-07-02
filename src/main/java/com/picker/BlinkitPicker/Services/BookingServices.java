@@ -5,6 +5,7 @@ import org.springframework.stereotype.Service;
 
 import com.picker.BlinkitPicker.Dto.BookingRequest;
 import com.picker.BlinkitPicker.Dto.WorkerList;
+import com.picker.BlinkitPicker.Dto.WorkerList.BookingData;
 import com.picker.BlinkitPicker.Dto.Logs;
 import com.picker.BlinkitPicker.Model.UserModel;
 import com.picker.BlinkitPicker.Repository.UserRepo;
@@ -61,19 +62,19 @@ public class BookingServices {
         if (workerMap.containsKey(userId.toString())) {
 
             workerMap.get(userId.toString()).addWorker(sessionId, worker);
-            workerMap.get(userId.toString()).addBookingData(sessionId, firstDate, lastDate);
+            workerMap.get(userId.toString()).addBookingData(false, sessionId, firstDate, lastDate);
         } else {
 
             WorkerList userWorkers = new WorkerList();
             userWorkers.addWorker(sessionId, worker);
-            userWorkers.addBookingData(sessionId, firstDate, lastDate);
+            userWorkers.addBookingData(false, sessionId, firstDate, lastDate);
 
             workerMap.put(userId.toString(), userWorkers);
         }
 
         executor.submit(worker);
 
-        return new WorkerList.BookingData(sessionId, firstDate, lastDate);
+        return new WorkerList.BookingData(false, sessionId, firstDate, lastDate);
     }
 
     public List<WorkerList.BookingData> getBookingData(String token) {
@@ -104,7 +105,10 @@ public class BookingServices {
             WorkerList userWorkers = workerMap.get(userId.toString());
             BookingWorker worker = userWorkers.getWorker(sessionId);
             if (worker != null) {
-                worker.pause();
+                if (worker.pause()) {
+                    WorkerList.BookingData bookingData = userWorkers.getBookingDataMap().get(sessionId);
+                    bookingData.setIsPaused(true);
+                }
                 return "Paused " + sessionId;
             }
         }
@@ -117,7 +121,10 @@ public class BookingServices {
             WorkerList userWorkers = workerMap.get(userId.toString());
             BookingWorker worker = userWorkers.getWorker(sessionId);
             if (worker != null) {
-                worker.resume();
+                if (worker.resume()) {
+                    WorkerList.BookingData bookingData = userWorkers.getBookingDataMap().get(sessionId);
+                    bookingData.setIsPaused(false);
+                }
                 return "Resumed " + sessionId;
             }
         }
