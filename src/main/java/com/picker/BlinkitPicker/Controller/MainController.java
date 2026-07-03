@@ -2,6 +2,7 @@ package com.picker.BlinkitPicker.Controller;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.HttpHeaders;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -9,11 +10,15 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestParam;
 
 import com.picker.BlinkitPicker.Dto.BookingRequest;
 import com.picker.BlinkitPicker.Dto.WorkerList;
+import com.picker.BlinkitPicker.Dto.Logs;
+import com.picker.BlinkitPicker.Dto.LogsResponse;
 import com.picker.BlinkitPicker.Services.BookingServices;
 
+import java.util.List;
 import jakarta.validation.Valid;
 
 @RestController
@@ -101,13 +106,20 @@ public class MainController {
 
     @GetMapping("/logs/{sessionId}")
     public ResponseEntity<?> getSessionLogs(@RequestHeader("Authorization") String token,
-            @PathVariable String sessionId) {
+            @PathVariable String sessionId,
+            @RequestParam(required = false, defaultValue = "-1") int afterIndex) {
         if (token != null && token.startsWith("Bearer ")) {
             token = token.substring(7);
         } else {
             return ResponseEntity.status(401).body("Invalid token");
         }
-        return ResponseEntity.ok(bookingServices.getSessionLogs(token, sessionId));
+
+        LogsResponse logsResponse = bookingServices.getSessionLogs(token, sessionId, afterIndex);
+        HttpHeaders headers = new HttpHeaders();
+        headers.add("X-Logs-Reset", String.valueOf(logsResponse.isReset()));
+        headers.add("Access-Control-Expose-Headers", "X-Logs-Reset");
+
+        return ResponseEntity.ok().headers(headers).body(logsResponse.getLogs());
     }
 
 }

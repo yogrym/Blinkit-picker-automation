@@ -7,6 +7,7 @@ import com.picker.BlinkitPicker.Dto.BookingRequest;
 import com.picker.BlinkitPicker.Dto.WorkerList;
 import com.picker.BlinkitPicker.Dto.WorkerList.BookingData;
 import com.picker.BlinkitPicker.Dto.Logs;
+import com.picker.BlinkitPicker.Dto.LogsResponse;
 import com.picker.BlinkitPicker.Model.UserModel;
 import com.picker.BlinkitPicker.Repository.UserRepo;
 import com.picker.BlinkitPicker.Util.SessionIdGenerator;
@@ -152,18 +153,36 @@ public class BookingServices {
         return workerMap;
     }
 
-    public List<Logs> getSessionLogs(String token, String sessionId) {
+    public LogsResponse getSessionLogs(String token, String sessionId, int afterIndex) {
         Long userId = jwtServices.extractUserId(token);
         if (userId != null && workerMap.containsKey(userId.toString())) {
             WorkerList userWorkers = workerMap.get(userId.toString());
             if (userWorkers != null) {
                 BookingWorker worker = userWorkers.getWorker(sessionId);
                 if (worker != null) {
-                    return worker.getLogs();
+                    List<Logs> allLogs = worker.getLogs();
+                    boolean isReset = true;
+                    List<Logs> logsToReturn;
+
+                    if (afterIndex >= 0 && afterIndex < allLogs.size()) {
+                        logsToReturn = allLogs.subList(afterIndex + 1, allLogs.size());
+                        isReset = false;
+                    } else {
+                        logsToReturn = allLogs;
+                        isReset = true;
+                    }
+
+                    return LogsResponse.builder()
+                            .logs(logsToReturn)
+                            .isReset(isReset)
+                            .build();
                 }
             }
         }
-        return Collections.emptyList();
+        return LogsResponse.builder()
+                .logs(Collections.emptyList())
+                .isReset(true)
+                .build();
     }
 
 }

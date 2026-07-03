@@ -6,7 +6,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Supplier;
 
+import com.picker.BlinkitPicker.Dto.CognitoRefreshTokenRespons;
 import com.picker.BlinkitPicker.Dto.FetchSlotsRequest;
 import com.picker.BlinkitPicker.Dto.FetchSlotsResponse;
 import com.picker.BlinkitPicker.Dto.GlobalRespons;
@@ -17,6 +19,8 @@ import com.picker.BlinkitPicker.Model.UserHeaderModel;
 import com.picker.BlinkitPicker.Model.UserModel;
 import com.picker.BlinkitPicker.Util.DateToUtc;
 import com.picker.BlinkitPicker.Util.GenerateCookie;
+
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 import reactor.core.publisher.Mono;
 
@@ -45,6 +49,8 @@ public class BookingWorker implements Runnable {
         this.dates = dates;
         this.times = times;
         this.user = user;
+        this.jwtToken = user.getUserHeaders().getAuthorization();
+        this.refreshToken = user.getRefreshToken();
         this.webClientServices = webClientServices;
     }
 
@@ -114,20 +120,16 @@ public class BookingWorker implements Runnable {
                 String siteId = headers.getSiteId();
 
                 logToFile("[BookingWorker - " + userId + "] Headers: " + headers.toString());
-                logs.add(Logs.builder()
-                        .logs(List.of("[BookingWorker - " + userId + "] Headers: " + headers.toString()))
-                        .build());
 
-                Mono<FetchSlotsResponse> responseMono = webClientServices.getSlotsDetails(
-                        cfbm, requestId, jwtToken, request,
-                        siteId, employeeId, userAgent, xDeviceId,
-                        role, sessionToken, httpSessionToken);
-
-                FetchSlotsResponse response = responseMono.block();
+                final String fetchCfBm = cfbm;
+                final String fetchRequestId = requestId;
+                FetchSlotsResponse response = blockWithTokenRefresh(
+                        "fetch slots",
+                        () -> webClientServices.getSlotsDetails(
+                                fetchCfBm, fetchRequestId, jwtToken, request,
+                                siteId, employeeId, userAgent, xDeviceId,
+                                role, sessionToken, httpSessionToken));
                 logToFile("[BookingWorker - " + userId + "] Raw API Response: " + response);
-                logs.add(Logs.builder()
-                        .logs(List.of("[BookingWorker - " + userId + "] Raw API Response: " + response))
-                        .build());
 
                 // Returns slots in user's preferred time-window order (same as bot)
                 // Key = slot ID, Value = IST time key e.g. "06:00-08:00"
@@ -140,12 +142,16 @@ public class BookingWorker implements Runnable {
                     cfbm = GenerateCookie.generateCfBmCookie();
                     requestId = GenerateCookie.generateRequestId();
 
-                    Mono<GlobalRespons> responseBooking = webClientServices.bookSlots(
-                            cfbm, requestId, jwtToken,
-                            BookSlotsRequest.builder().slotIds(slotIds).build(),
-                            storeId, user, sessionToken, httpSessionToken, timesLog);
+                    final String bookCfBm = cfbm;
+                    final String bookRequestId = requestId;
+                    GlobalRespons bookingResponse = blockWithTokenRefresh(
+                            "book slots",
+                            () -> webClientServices.bookSlots(
+                                    bookCfBm, bookRequestId, jwtToken,
+                                    BookSlotsRequest.builder().slotIds(slotIds).build(),
+                                    storeId, user, sessionToken, httpSessionToken, timesLog));
 
-                    if (responseBooking.block().isSuccess()) {
+                    if (bookingResponse.isSuccess()) {
                         logToFile("[BookingWorker - " + userId + "] SUCCESS! Booked slots " + slotIds
                                 + " on date " + dates.get(i));
                         logs.add(Logs.builder()
@@ -164,12 +170,16 @@ public class BookingWorker implements Runnable {
                             cfbm = GenerateCookie.generateCfBmCookie();
                             requestId = GenerateCookie.generateRequestId();
 
-                            Mono<GlobalRespons> responseBookingRetry = webClientServices.bookSlots(
-                                    cfbm, requestId, jwtToken,
-                                    BookSlotsRequest.builder().slotIds(singleSlot).build(),
-                                    storeId, user, sessionToken, httpSessionToken, singleTimeLog);
+                            final String retryCfBm = cfbm;
+                            final String retryRequestId = requestId;
+                            GlobalRespons bookingRetryResponse = blockWithTokenRefresh(
+                                    "book single slot",
+                                    () -> webClientServices.bookSlots(
+                                            retryCfBm, retryRequestId, jwtToken,
+                                            BookSlotsRequest.builder().slotIds(singleSlot).build(),
+                                            storeId, user, sessionToken, httpSessionToken, singleTimeLog));
 
-                            if (responseBookingRetry.block().isSuccess()) {
+                            if (bookingRetryResponse.isSuccess()) {
                                 logToFile("[BookingWorker - " + userId + "] SUCCESS on retry! Booked "
                                         + currentSlotId + " on date " + dates.get(i));
                                 logs.add(Logs.builder()
@@ -202,6 +212,60 @@ public class BookingWorker implements Runnable {
                         .build());
                 e.printStackTrace();
             }
+        }
+    }
+
+    private <T> T blockWithTokenRefresh(String operationName, Supplier<Mono<T>> apiCall) {
+        try {
+            return apiCall.get().block();
+        } catch (WebClientResponseException e) {
+            if (!isUnauthorizedOrForbidden(e)) {
+                throw e;
+            }
+
+            logToFile("[BookingWorker - " + userId + "] " + operationName + " returned HTTP "
+                    + e.getStatusCode().value() + ". Refreshing JWT token.");
+
+            if (!refreshJwtToken()) {
+                throw e;
+            }
+
+            logToFile("[BookingWorker - " + userId + "] JWT token refreshed. Retrying " + operationName + ".");
+            return apiCall.get().block();
+        }
+    }
+
+    private boolean isUnauthorizedOrForbidden(WebClientResponseException e) {
+        int statusCode = e.getStatusCode().value();
+        return statusCode == 401 || statusCode == 403;
+    }
+
+    private boolean refreshJwtToken() {
+        try {
+            if (refreshToken == null || refreshToken.isBlank()) {
+                logToFile("[BookingWorker - " + userId + "] Cannot refresh JWT token: refresh token is missing.");
+                return false;
+            }
+
+            CognitoRefreshTokenRespons response = webClientServices.refreshToken(refreshToken);
+            if (response == null || response.getAuthenticationResult() == null
+                    || response.getAuthenticationResult().getIdToken() == null
+                    || response.getAuthenticationResult().getIdToken().isBlank()) {
+                logToFile("[BookingWorker - " + userId + "] Cannot refresh JWT token: Cognito response has no IdToken.");
+                return false;
+            }
+
+            String freshToken = response.getAuthenticationResult().getIdToken();
+            this.jwtToken = freshToken;
+            user.setJwt(freshToken);
+            if (user.getUserHeaders() != null) {
+                user.getUserHeaders().setAuthorization(freshToken);
+            }
+
+            return true;
+        } catch (Throwable e) {
+            logToFile("[BookingWorker - " + userId + "] JWT refresh failed: " + e.toString());
+            return false;
         }
     }
 
@@ -269,9 +333,6 @@ public class BookingWorker implements Runnable {
 
         if (availableSlots.isEmpty()) {
             logToFile("[BookingWorker] No available+eligible slots found for store " + userStoreId);
-            logs.add(Logs.builder()
-                    .logs(List.of("[BookingWorker] No available+eligible slots found for store " + userStoreId))
-                    .build());
             return Collections.emptyMap();
         }
 
@@ -286,9 +347,6 @@ public class BookingWorker implements Runnable {
                         DateToUtc.slotTimeKey(slot.getStartTime(), slot.getEndTime()));
             }
             logToFile("[BookingWorker] Mode=ALL → returning " + all.size() + " available slots.");
-            logs.add(Logs.builder()
-                    .logs(List.of("[BookingWorker] Mode=ALL → returning " + all.size() + " available slots."))
-                    .build());
             return all;
         }
 
@@ -303,10 +361,6 @@ public class BookingWorker implements Runnable {
                     matchedSlots.put(String.valueOf(slot.getId()), slotKey);
                     logToFile("[BookingWorker] MATCHED slot " + slot.getId()
                             + " for time window " + preferredKey);
-                    logs.add(Logs.builder()
-                            .logs(List.of("[BookingWorker] MATCHED slot " + slot.getId()
-                                    + " for time window " + preferredKey))
-                            .build());
                 }
             }
         }
@@ -319,10 +373,6 @@ public class BookingWorker implements Runnable {
             }
             logToFile("[BookingWorker] No matching slots | Seen keys: " + seenKeys
                     + " | Filter: " + times);
-            logs.add(Logs.builder()
-                    .logs(List.of("[BookingWorker] No matching slots | Seen keys: " + seenKeys
-                            + " | Filter: " + times))
-                    .build());
         }
 
         return matchedSlots;
@@ -332,7 +382,7 @@ public class BookingWorker implements Runnable {
     public void run() {
         logToFile("[BookingWorker - " + userId + "] Background thread started successfully!");
         logs.add(Logs.builder()
-                .logs(List.of("[BookingWorker - " + userId + "] Background thread started successfully!"))
+                .logs(List.of("Background thread started successfully!"))
                 .build());
 
         while (!this.isStop) {
@@ -347,16 +397,13 @@ public class BookingWorker implements Runnable {
             }
 
             logToFile("[BookingWorker - " + userId + "] Preparing to fetch slots. Found dates: " + dates);
-            logs.add(Logs.builder()
-                    .logs(List.of("[BookingWorker - " + userId + "] Preparing to fetch slots. Found dates: " + dates))
-                    .build());
 
             if (dates == null || dates.isEmpty()) {
                 logToFile("[BookingWorker - " + userId
                         + "] ERROR: The 'dates' array is null or empty! Cannot fetch slots. Stopping worker.");
                 logs.add(Logs.builder()
-                        .logs(List.of("[BookingWorker - " + userId
-                                + "] ERROR: The 'dates' array is null or empty! Cannot fetch slots. Stopping worker."))
+                        .logs(List
+                                .of("ERROR: The 'dates' array is null or empty! Cannot fetch slots. Stopping worker."))
                         .build());
                 this.isStop = true;
                 continue;
