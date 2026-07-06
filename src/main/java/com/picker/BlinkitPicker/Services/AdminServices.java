@@ -22,6 +22,7 @@ import com.picker.BlinkitPicker.Enums.RoleEnum;
 import com.picker.BlinkitPicker.Model.UserHeaderModel;
 import com.picker.BlinkitPicker.Model.UserModel;
 import com.picker.BlinkitPicker.Repository.UserRepo;
+import com.picker.BlinkitPicker.Util.ApiKeyGenerator;
 
 @Service
 public class AdminServices {
@@ -68,6 +69,7 @@ public class AdminServices {
         UserModel user = UserModel.builder()
                 .phone(request.getPhone())
                 .role(request.getRole())
+                .apiKey(ApiKeyGenerator.generateApiKey())
                 .expiresAt(expiresAt)
                 .build();
 
@@ -271,6 +273,37 @@ public class AdminServices {
             }
         }
         throw new ResponseStatusException(HttpStatus.NOT_FOUND, "session not found");
+    }
+
+    public Boolean renewPlan(String token, String planType) {
+
+        var claims = jwtServices.extractClaimsSafely(token);
+        if (claims == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "invalid token");
+        }
+
+        Long userID = claims.get("userId", Long.class);
+
+        UserModel user = userRepo.findById(userID)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "user not found"));
+
+        LocalDateTime currentPlanValidity = user.getExpiresAt();
+
+        if (planType != null) {
+
+            if (planType.equals("weekly")) {
+                user.setExpiresAt(currentPlanValidity.plusWeeks(1));
+            } else if (planType.equals("monthly")) {
+                user.setExpiresAt(currentPlanValidity.plusMonths(1));
+            } else if (planType.equals("3 months") || planType.equals("3months")) {
+                user.setExpiresAt(currentPlanValidity.plusMonths(3));
+            }
+
+        }
+
+        userRepo.save(user);
+        return true;
+
     }
 
 }

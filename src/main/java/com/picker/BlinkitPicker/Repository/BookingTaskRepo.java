@@ -1,0 +1,17 @@
+package com.picker.BlinkitPicker.Repository;
+
+import java.util.List;
+import java.util.Optional;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+import com.picker.BlinkitPicker.Model.BookingTaskModel;
+
+@Repository
+public interface BookingTaskRepo extends JpaRepository<BookingTaskModel, String> {
+
+    List<BookingTaskModel> findByActiveTrue();
+
+    Optional<BookingTaskModel> findByUserIdAndSessionIdAndActiveTrue(Long userId, String sessionId);
+}

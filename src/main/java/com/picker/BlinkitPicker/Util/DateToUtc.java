@@ -96,4 +96,68 @@ public class DateToUtc {
             return "";
         }
     }
+
+    public static boolean isTimeMatch(String preferredKey, String startTime, String endTime) {
+        if (preferredKey == null || preferredKey.isBlank()) {
+            return false;
+        }
+        if (startTime == null || endTime == null || startTime.isBlank() || endTime.isBlank()) {
+            return false;
+        }
+        try {
+            ZonedDateTime start = Instant.parse(startTime.trim()).atZone(ZoneId.of("Asia/Kolkata"));
+            ZonedDateTime end   = Instant.parse(endTime.trim()).atZone(ZoneId.of("Asia/Kolkata"));
+
+            int sh = start.getHour();
+            int sm = start.getMinute();
+            int eh = end.getHour();
+            int em = end.getMinute();
+
+            // Clean the preferredKey for uniform comparison
+            // Remove all spaces and normalize multiple hyphens/dashes to a single hyphen
+            String cleanPreferred = preferredKey.trim().toLowerCase()
+                    .replaceAll("\\s+", "")
+                    .replaceAll("-+", "-");
+
+            // Let's generate possible clean representations of the slot time:
+            java.util.List<String> candidates = new java.util.ArrayList<>();
+
+            // 1. 24-hour formats
+            // "20:00-22:00", "20-22"
+            candidates.add(String.format("%02d:%02d-%02d:%02d", sh, sm, eh, em));
+            candidates.add(String.format("%d:%02d-%d:%02d", sh, sm, eh, em));
+            if (sm == 0 && em == 0) {
+                candidates.add(String.format("%d-%d", sh, eh));
+            }
+
+            // 2. 12-hour formats
+            int sh12 = sh > 12 ? sh - 12 : (sh == 0 ? 12 : sh);
+            int eh12 = eh > 12 ? eh - 12 : (eh == 0 ? 12 : eh);
+            String shAmPm = sh >= 12 ? "pm" : "am";
+            String ehAmPm = eh >= 12 ? "pm" : "am";
+
+            // "10:00am-12:00pm", "10am-12pm", "08:00pm-10:00pm"
+            candidates.add(String.format("%02d:%02d%s-%02d:%02d%s", sh12, sm, shAmPm, eh12, em, ehAmPm));
+            candidates.add(String.format("%d:%02d%s-%d:%02d%s", sh12, sm, shAmPm, eh12, em, ehAmPm));
+            
+            if (sm == 0 && em == 0) {
+                candidates.add(String.format("%d%s-%d%s", sh12, shAmPm, eh12, ehAmPm));
+                // Sometimes people write "8-10pm" instead of "8pm-10pm"
+                candidates.add(String.format("%d-%d%s", sh12, eh12, ehAmPm));
+                candidates.add(String.format("%d-%d%s", sh12, eh12, shAmPm));
+                candidates.add(String.format("%d-%d", sh12, eh12)); // e.g. "8-10" without am/pm
+            }
+
+            // Let's check if cleanPreferred matches any clean candidate
+            for (String candidate : candidates) {
+                String cleanCandidate = candidate.replaceAll("\\s+", "").replaceAll("-+", "-");
+                if (cleanPreferred.equals(cleanCandidate)) {
+                    return true;
+                }
+            }
+        } catch (Exception e) {
+            // ignore
+        }
+        return false;
+    }
 }

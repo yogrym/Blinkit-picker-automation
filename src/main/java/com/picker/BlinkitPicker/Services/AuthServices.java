@@ -20,6 +20,8 @@ import com.picker.BlinkitPicker.Dto.RefreshTokenRequest;
 import com.picker.BlinkitPicker.Model.UserModel;
 import com.picker.BlinkitPicker.Model.UserHeaderModel;
 import com.picker.BlinkitPicker.Repository.UserRepo;
+import com.picker.BlinkitPicker.Util.ApiKeyGenerator;
+
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
@@ -84,6 +86,9 @@ public class AuthServices {
         userOpt.get().setRefreshToken(verifyRespons.getAuthenticationResult().getRefreshToken());
 
         UserHeaderModel headers = userOpt.get().getUserHeaders();
+        if (userOpt.get().getApiKey() == null) {
+            userOpt.get().setApiKey(ApiKeyGenerator.generateApiKey());
+        }
 
         if (headers == null) {
             headers = new UserHeaderModel();
@@ -94,6 +99,7 @@ public class AuthServices {
         headers.setXLong(request.getXLong());
 
         try {
+
             JsonNode idTokenClaims = extractJwtPayload(idToken);
             headers.setEmployeeId(getTextClaim(idTokenClaims, "employeeId"));
             headers.setEmployeeName(getTextClaim(idTokenClaims, "employeeName"));
