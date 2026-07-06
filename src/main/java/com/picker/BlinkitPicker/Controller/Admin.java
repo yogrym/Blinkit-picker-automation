@@ -122,4 +122,15 @@ public class Admin {
         }
     }
 
+    @PostMapping("/renew-plan")
+    public ResponseEntity<?> renewPlan(
+            @RequestHeader("Authorization") String token,
+            @RequestParam("planType") String planType) {
+        try {
+            return ResponseEntity.ok(adminServices.renewPlan(token, planType));
+        } catch (ResponseStatusException e) {
+            return ResponseEntity.status(e.getStatusCode()).body(e.getReason());
+        }
+    }
+
 }
