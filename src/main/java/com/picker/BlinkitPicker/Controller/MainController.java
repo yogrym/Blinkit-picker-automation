@@ -3,6 +3,7 @@ package com.picker.BlinkitPicker.Controller;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.HttpHeaders;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -17,6 +18,7 @@ import com.picker.BlinkitPicker.Dto.WorkerList;
 import com.picker.BlinkitPicker.Dto.Logs;
 import com.picker.BlinkitPicker.Dto.LogsResponse;
 import com.picker.BlinkitPicker.Services.BookingServices;
+import com.picker.BlinkitPicker.Services.GlobalServices;
 
 import java.util.List;
 import jakarta.validation.Valid;
@@ -120,6 +122,17 @@ public class MainController {
         headers.add("Access-Control-Expose-Headers", "X-Logs-Reset");
 
         return ResponseEntity.ok().headers(headers).body(logsResponse.getLogs());
+    }
+
+    @DeleteMapping("remove/{date}/{sessionId}")
+    public ResponseEntity<?> removeDateFromBookingSession(@RequestHeader("Authorization") String token,
+            @PathVariable String date,
+            @PathVariable String sessionId) {
+        try {
+            return ResponseEntity.ok(bookingServices.removeDate(date, token, sessionId));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
     }
 
 }

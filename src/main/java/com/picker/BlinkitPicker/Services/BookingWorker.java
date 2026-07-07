@@ -489,4 +489,9 @@ public class BookingWorker implements Runnable {
             System.out.println("Failed to write to log file: " + e.getMessage());
         }
     }
+
+    public boolean removeOneDateFromList(String date){
+        dates.remove(date);
+        return true;
+    }
 }

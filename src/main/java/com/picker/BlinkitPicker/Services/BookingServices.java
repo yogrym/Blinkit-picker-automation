@@ -3,6 +3,7 @@ package com.picker.BlinkitPicker.Services;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Service;
 
 import com.picker.BlinkitPicker.Dto.BookingRequest;
@@ -282,6 +283,25 @@ public class BookingServices implements ApplicationRunner {
                     return true;
                 })
                 .orElse(false);
+    }
+
+    public boolean removeDate(String date, String token, String sessionId) {
+
+        if (token != null && token.startsWith("Bearer")) {
+            token.substring(7);
+        }
+
+        Long userId = jwtServices.extractUserId(token);
+
+        if (userId == null && date == null) {
+            return false;
+        }
+
+        WorkerList userWorker = workerMap.get(userId.toString());
+
+        BookingWorker bookingWorker = userWorker.getWorker(sessionId);
+        return bookingWorker.removeOneDateFromList(date);
+
     }
 
 }
