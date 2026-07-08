@@ -127,11 +127,11 @@ public class MainController {
     @DeleteMapping("remove/{date}/{sessionId}")
     public ResponseEntity<?> removeDateAndTimeFromBookingSession(@RequestHeader("Authorization") String token,
             @PathVariable String date,
-            @PathVariable String time,
+            @RequestParam("time") String time,
             @PathVariable String sessionId) {
 
         try {
-            return ResponseEntity.ok(bookingServices.removeDate(date,time, token, sessionId));
+            return ResponseEntity.ok(bookingServices.removeDate(date, time, token, sessionId));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }

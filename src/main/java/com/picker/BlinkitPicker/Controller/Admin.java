@@ -126,12 +126,15 @@ public class Admin {
     @PostMapping("/renew-plan")
     public ResponseEntity<?> renewPlan(
             @RequestHeader("Authorization") String token,
-            @PathVariable("userId") Long userId,
-            @PathVariable("planType") String planType) {
+            @RequestBody java.util.Map<String, Object> body) {
         try {
+            Long userId = Long.valueOf(body.get("userId").toString());
+            String planType = body.get("plan").toString();
             return ResponseEntity.ok(adminServices.renewPlan(token, userId, planType));
         } catch (ResponseStatusException e) {
             return ResponseEntity.status(e.getStatusCode()).body(e.getReason());
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
         }
     }
 
