@@ -285,7 +285,7 @@ public class BookingServices implements ApplicationRunner {
                 .orElse(false);
     }
 
-    public boolean removeDate(String date,String time, String token, String sessionId) {
+    public boolean removeDate(String date, String time, String token, String sessionId) {
 
         if (token != null && token.startsWith("Bearer")) {
             token.substring(7);
@@ -300,9 +300,15 @@ public class BookingServices implements ApplicationRunner {
         WorkerList userWorker = workerMap.get(userId.toString());
 
         BookingWorker bookingWorker = userWorker.getWorker(sessionId);
-        bookingWorker.removeOneDateFromList(date);
-        bookingWorker.removeOneTimeFromList(time);
-        return true;    
+        if (date != null) {
+            bookingWorker.removeOneDateFromList(date);
+        }
+
+        if (time != null) {
+            bookingWorker.removeOneTimeFromList(time);
+        }
+
+        return true;
     }
 
 }
