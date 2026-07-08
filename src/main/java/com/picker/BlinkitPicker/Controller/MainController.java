@@ -13,10 +13,10 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
 
-import com.picker.BlinkitPicker.Dto.BookingRequest;
 import com.picker.BlinkitPicker.Dto.WorkerList;
+import com.picker.BlinkitPicker.Dto.request.BookingRequest;
+import com.picker.BlinkitPicker.Dto.respons.LogsResponse;
 import com.picker.BlinkitPicker.Dto.Logs;
-import com.picker.BlinkitPicker.Dto.LogsResponse;
 import com.picker.BlinkitPicker.Services.BookingServices;
 import com.picker.BlinkitPicker.Services.GlobalServices;
 
@@ -125,11 +125,13 @@ public class MainController {
     }
 
     @DeleteMapping("remove/{date}/{sessionId}")
-    public ResponseEntity<?> removeDateFromBookingSession(@RequestHeader("Authorization") String token,
+    public ResponseEntity<?> removeDateAndTimeFromBookingSession(@RequestHeader("Authorization") String token,
             @PathVariable String date,
+            @PathVariable String time,
             @PathVariable String sessionId) {
+
         try {
-            return ResponseEntity.ok(bookingServices.removeDate(date, token, sessionId));
+            return ResponseEntity.ok(bookingServices.removeDate(date,time, token, sessionId));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }

@@ -1,4 +1,4 @@
-package com.picker.BlinkitPicker.Dto;
+package com.picker.BlinkitPicker.Dto.request;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.picker.BlinkitPicker.Enums.RoleEnum;

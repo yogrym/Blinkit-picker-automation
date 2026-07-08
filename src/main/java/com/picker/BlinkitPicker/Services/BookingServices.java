@@ -6,11 +6,11 @@ import org.springframework.boot.ApplicationRunner;
 import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Service;
 
-import com.picker.BlinkitPicker.Dto.BookingRequest;
 import com.picker.BlinkitPicker.Dto.WorkerList;
 import com.picker.BlinkitPicker.Dto.WorkerList.BookingData;
+import com.picker.BlinkitPicker.Dto.request.BookingRequest;
+import com.picker.BlinkitPicker.Dto.respons.LogsResponse;
 import com.picker.BlinkitPicker.Dto.Logs;
-import com.picker.BlinkitPicker.Dto.LogsResponse;
 import com.picker.BlinkitPicker.Model.BookingTaskModel;
 import com.picker.BlinkitPicker.Model.UserModel;
 import com.picker.BlinkitPicker.Repository.BookingTaskRepo;
@@ -285,7 +285,7 @@ public class BookingServices implements ApplicationRunner {
                 .orElse(false);
     }
 
-    public boolean removeDate(String date, String token, String sessionId) {
+    public boolean removeDate(String date,String time, String token, String sessionId) {
 
         if (token != null && token.startsWith("Bearer")) {
             token.substring(7);
@@ -300,8 +300,9 @@ public class BookingServices implements ApplicationRunner {
         WorkerList userWorker = workerMap.get(userId.toString());
 
         BookingWorker bookingWorker = userWorker.getWorker(sessionId);
-        return bookingWorker.removeOneDateFromList(date);
-
+        bookingWorker.removeOneDateFromList(date);
+        bookingWorker.removeOneTimeFromList(time);
+        return true;    
     }
 
 }

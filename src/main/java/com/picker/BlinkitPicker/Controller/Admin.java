@@ -7,6 +7,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -15,9 +16,9 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.picker.BlinkitPicker.Dto.AdminUserListResponse;
-import com.picker.BlinkitPicker.Dto.SignupRequest;
-import com.picker.BlinkitPicker.Dto.SignupRespons;
+import com.picker.BlinkitPicker.Dto.request.SignupRequest;
+import com.picker.BlinkitPicker.Dto.respons.AdminUserListResponse;
+import com.picker.BlinkitPicker.Dto.respons.SignupRespons;
 import com.picker.BlinkitPicker.Services.AdminServices;
 
 @RestController
@@ -125,9 +126,10 @@ public class Admin {
     @PostMapping("/renew-plan")
     public ResponseEntity<?> renewPlan(
             @RequestHeader("Authorization") String token,
-            @RequestParam("planType") String planType) {
+            @PathVariable("userId") Long userId,
+            @PathVariable("planType") String planType) {
         try {
-            return ResponseEntity.ok(adminServices.renewPlan(token, planType));
+            return ResponseEntity.ok(adminServices.renewPlan(token, userId, planType));
         } catch (ResponseStatusException e) {
             return ResponseEntity.status(e.getStatusCode()).body(e.getReason());
         }

@@ -7,12 +7,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
 
-import com.picker.BlinkitPicker.Dto.CognitoRefreshTokenRespons;
-import com.picker.BlinkitPicker.Dto.FetchSlotsRequest;
-import com.picker.BlinkitPicker.Dto.FetchSlotsResponse;
-import com.picker.BlinkitPicker.Dto.GlobalRespons;
 import com.picker.BlinkitPicker.Dto.Logs;
 import com.picker.BlinkitPicker.Dto.Internal.BookSlotsRequest;
+import com.picker.BlinkitPicker.Dto.request.FetchSlotsRequest;
+import com.picker.BlinkitPicker.Dto.respons.CognitoRefreshTokenRespons;
+import com.picker.BlinkitPicker.Dto.respons.FetchSlotsResponse;
+import com.picker.BlinkitPicker.Dto.respons.GlobalRespons;
 import com.picker.BlinkitPicker.Enums.RoleEnum;
 import com.picker.BlinkitPicker.Model.UserHeaderModel;
 import com.picker.BlinkitPicker.Model.UserModel;
@@ -492,6 +492,11 @@ public class BookingWorker implements Runnable {
 
     public boolean removeOneDateFromList(String date){
         dates.remove(date);
+        return true;
+    }
+
+    public boolean removeOneTimeFromList(String time){
+        times.remove(time);
         return true;
     }
 }

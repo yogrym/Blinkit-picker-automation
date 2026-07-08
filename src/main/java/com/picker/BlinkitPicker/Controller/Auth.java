@@ -8,9 +8,9 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.picker.BlinkitPicker.Dto.LoginRequest;
-import com.picker.BlinkitPicker.Dto.VerifyOtpClientRequest;
-import com.picker.BlinkitPicker.Dto.RefreshTokenRequest;
+import com.picker.BlinkitPicker.Dto.request.LoginRequest;
+import com.picker.BlinkitPicker.Dto.request.RefreshTokenRequest;
+import com.picker.BlinkitPicker.Dto.request.VerifyOtpClientRequest;
 import com.picker.BlinkitPicker.Services.AuthServices;
 
 import jakarta.validation.Valid;

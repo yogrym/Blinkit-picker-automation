@@ -1,4 +1,4 @@
-package com.picker.BlinkitPicker.Dto;
+package com.picker.BlinkitPicker.Dto.request;
 
 import java.util.List;
 

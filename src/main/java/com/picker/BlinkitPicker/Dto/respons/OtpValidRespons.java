@@ -1,4 +1,4 @@
-package com.picker.BlinkitPicker.Dto;
+package com.picker.BlinkitPicker.Dto.respons;
 
 import lombok.Data;
 import lombok.Builder;

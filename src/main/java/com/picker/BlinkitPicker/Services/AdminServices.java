@@ -12,11 +12,12 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
-import com.picker.BlinkitPicker.Dto.AdminUserListResponse;
-import com.picker.BlinkitPicker.Dto.SignupRequest;
-import com.picker.BlinkitPicker.Dto.SignupRespons;
 import com.picker.BlinkitPicker.Dto.WorkerList;
 import com.picker.BlinkitPicker.Dto.WorkerList.BookingData;
+import com.picker.BlinkitPicker.Dto.request.SignupRequest;
+import com.picker.BlinkitPicker.Dto.respons.AdminUserListResponse;
+import com.picker.BlinkitPicker.Dto.respons.SignupRespons;
+
 import java.util.concurrent.ConcurrentHashMap;
 import com.picker.BlinkitPicker.Enums.RoleEnum;
 import com.picker.BlinkitPicker.Model.UserHeaderModel;
@@ -275,16 +276,14 @@ public class AdminServices {
         throw new ResponseStatusException(HttpStatus.NOT_FOUND, "session not found");
     }
 
-    public Boolean renewPlan(String token, String planType) {
+    public Boolean renewPlan(String token, Long userId, String planType) {
 
         var claims = jwtServices.extractClaimsSafely(token);
         if (claims == null) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "invalid token");
         }
 
-        Long userID = claims.get("userId", Long.class);
-
-        UserModel user = userRepo.findById(userID)
+        UserModel user = userRepo.findById(userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "user not found"));
 
         LocalDateTime currentPlanValidity = user.getExpiresAt();

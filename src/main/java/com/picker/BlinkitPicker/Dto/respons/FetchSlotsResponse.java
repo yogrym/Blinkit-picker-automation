@@ -1,4 +1,4 @@
-package com.picker.BlinkitPicker.Dto;
+package com.picker.BlinkitPicker.Dto.respons;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
