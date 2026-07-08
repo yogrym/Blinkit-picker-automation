@@ -95,3 +95,45 @@ true
 ### Error Responses
 - **401 Unauthorized**: Missing or invalid token.
 - **400 Bad Request**: Invalid session or parameters.
+
+---
+
+## 3. Get Session Time and Date API
+
+This endpoint retrieves the scheduled dates and time slots associated with a specific active booking session.
+
+### Metadata
+- **Endpoint:** `/task/get-session-data/{sessionID}`
+- **Method:** `GET`
+- **Authentication:** Bearer Token Required (JWT)
+- **Required Role:** `USER`, `MAINTAINER`, or `ADMIN`
+- **Scope:** Users can only fetch data for their own sessions.
+
+### Headers
+| Header | Value | Description |
+| :--- | :--- | :--- |
+| `Authorization` | `Bearer <jwt_token>` | User JWT token |
+
+### Path Parameters
+| Parameter | Type | Required | Description |
+| :--- | :--- | :--- | :--- |
+| `sessionID` | `String` | Yes | The unique session ID of the active booking session |
+
+### Example Request URL
+```http
+GET http://localhost:8080/task/get-session-data/a8c9b3d1-394f-4e09-9f7e-1234567890ab
+```
+
+### Response (200 OK)
+Returns a `SessionDateTimeRespons` object containing the dates and time slots for the session.
+```json
+{
+  "dates": ["2026-07-10", "2026-07-11", "2026-07-12"],
+  "times": ["6:00 AM - 8:00 AM", "12:00 PM - 2:00 PM"]
+}
+```
+
+### Error Responses
+- **401 Unauthorized**: Missing or invalid token.
+- **400 Bad Request**: Session not found or an unexpected error occurred.
+  - Body: `"<error message>"`

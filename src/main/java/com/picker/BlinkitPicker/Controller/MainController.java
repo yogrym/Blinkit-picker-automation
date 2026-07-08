@@ -137,4 +137,15 @@ public class MainController {
         }
     }
 
+    @GetMapping("get-session-data/{sessionID}")
+    public ResponseEntity<?> getSessionTimeAndDate(@PathVariable String sessionID,
+            @RequestHeader("Authorization") String token) {
+        try {
+            return ResponseEntity.ok(bookingServices.getSessionTimeAndDate(token, sessionID));
+        } catch (Exception e) {
+            return ResponseEntity.status(400).body(e.getMessage());
+        }
+
+    }
+
 }

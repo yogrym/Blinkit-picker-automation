@@ -10,6 +10,7 @@ import com.picker.BlinkitPicker.Dto.WorkerList;
 import com.picker.BlinkitPicker.Dto.WorkerList.BookingData;
 import com.picker.BlinkitPicker.Dto.request.BookingRequest;
 import com.picker.BlinkitPicker.Dto.respons.LogsResponse;
+import com.picker.BlinkitPicker.Dto.respons.SessionDateTimeRespons;
 import com.picker.BlinkitPicker.Dto.Logs;
 import com.picker.BlinkitPicker.Model.BookingTaskModel;
 import com.picker.BlinkitPicker.Model.UserModel;
@@ -309,6 +310,37 @@ public class BookingServices implements ApplicationRunner {
         }
 
         return true;
+    }
+
+    public com.picker.BlinkitPicker.Dto.respons.SessionDateTimeRespons getSessionTimeAndDate(String token, String sessionId) {
+        if (token != null && token.startsWith("Bearer ")) {
+            token = token.substring(7);
+        }
+
+        Long userId = jwtServices.extractUserId(token);
+
+        if (userId == null) {
+            throw new RuntimeException("Invalid token");
+        }
+
+        WorkerList userWorker = workerMap.get(userId.toString());
+        if (userWorker != null) {
+            BookingWorker bookingWorker = userWorker.getWorker(sessionId);
+            if (bookingWorker != null) {
+                return com.picker.BlinkitPicker.Dto.respons.SessionDateTimeRespons.builder()
+                        .dates(bookingWorker.getDates())
+                        .times(bookingWorker.getTimes())
+                        .build();
+            }
+        }
+
+        var task = bookingTaskRepo.findByUserIdAndSessionIdAndActiveTrue(userId, sessionId)
+                .orElseThrow(() -> new RuntimeException("Session not found"));
+
+        return com.picker.BlinkitPicker.Dto.respons.SessionDateTimeRespons.builder()
+                .dates(task.getDates())
+                .times(task.getTimes())
+                .build();
     }
 
 }

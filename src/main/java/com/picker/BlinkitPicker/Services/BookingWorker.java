@@ -20,10 +20,15 @@ import com.picker.BlinkitPicker.Repository.UserRepo;
 import com.picker.BlinkitPicker.Util.DateToUtc;
 import com.picker.BlinkitPicker.Util.GenerateCookie;
 
+import lombok.Getter;
+import lombok.Setter;
+
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 import reactor.core.publisher.Mono;
 
+@Getter
+@Setter
 public class BookingWorker implements Runnable {
 
     private static final int MAX_IN_MEMORY_LOGS = 5;
@@ -490,12 +495,12 @@ public class BookingWorker implements Runnable {
         }
     }
 
-    public boolean removeOneDateFromList(String date){
+    public boolean removeOneDateFromList(String date) {
         dates.remove(date);
         return true;
     }
 
-    public boolean removeOneTimeFromList(String time){
+    public boolean removeOneTimeFromList(String time) {
         times.remove(time);
         return true;
     }
