@@ -31,7 +31,7 @@ import reactor.core.publisher.Mono;
 @Setter
 public class BookingWorker implements Runnable {
 
-    private static final int MAX_IN_MEMORY_LOGS = 5;
+    private static final int MAX_IN_MEMORY_LOGS = 100;
     private static final boolean ENABLE_VERBOSE_FILE_LOGS = false;
     private static final boolean ENABLE_CONSOLE_LOGS = false;
 
@@ -168,7 +168,10 @@ public class BookingWorker implements Runnable {
                         logToFile("[BookingWorker - " + userId + "] SUCCESS! Booked slots " + slotIds
                                 + " on date " + dates.get(i));
                         incrementBookedSlots(slotIds.size());
-                        addInMemoryLog("Slot booked successfully for " + slotIds + " on date " + dates.get(i));
+                        for (String slotId : slotIds) {
+                            String timing = slotIdToTime.get(slotId);
+                            addInMemoryLog("Booked slot | " + timing + " | " + dates.get(i) + " | ID: " + slotId);
+                        }
                         continue;
                     } else {
                         // Bulk booking failed — retry each slot individually (same as bot's one-by-one
@@ -195,8 +198,7 @@ public class BookingWorker implements Runnable {
                                 logToFile("[BookingWorker - " + userId + "] SUCCESS on retry! Booked "
                                         + currentSlotId + " on date " + dates.get(i));
                                 incrementBookedSlots(1);
-                                addInMemoryLog("Slot booked successfully for " + currentSlotId
-                                        + " on date " + dates.get(i));
+                                addInMemoryLog("Booked slot | " + slotIdToTime.get(currentSlotId) + " | " + dates.get(i) + " | ID: " + currentSlotId);
                             } else {
                                 logToFile("[BookingWorker - " + userId + "] FAILED to book slot "
                                         + currentSlotId + " on date " + dates.get(i));
@@ -388,7 +390,7 @@ public class BookingWorker implements Runnable {
     public void run() {
         try {
             logToFile("[BookingWorker - " + userId + "] Background thread started successfully!");
-            addInMemoryLog("Background thread started successfully!");
+            addInMemoryLog("Booking started");
 
             while (!this.isStop) {
 
@@ -450,28 +452,28 @@ public class BookingWorker implements Runnable {
     }
 
     private void incrementBookedSlots(long count) {
-        if (count > 0) {
-            bookedSlotsInSession += count;
-        }
-    }
-
-    private void saveBookedSlotsIfAny() {
-        if (bookedSlotsSaved || bookedSlotsInSession <= 0) {
-            return;
-        }
-
+        if (count <= 0) return;
+        bookedSlotsInSession += count;
+        // Persist immediately so data is never lost on JVM kill/crash
         try {
             Long id = user.getId() != null ? user.getId() : Long.valueOf(userId);
             UserModel latestUser = userRepo.findById(id).orElse(user);
             Long currentTotal = latestUser.getTotalBookedSlots() != null ? latestUser.getTotalBookedSlots() : 0L;
-            latestUser.setTotalBookedSlots(currentTotal + bookedSlotsInSession);
+            latestUser.setTotalBookedSlots(currentTotal + count);
             userRepo.save(latestUser);
-            bookedSlotsSaved = true;
-            logToFile("[BookingWorker - " + userId + "] Saved " + bookedSlotsInSession
-                    + " booked slots to user total.");
+            logToFile("[BookingWorker - " + userId + "] Saved +" + count + " booked slots to DB (session total: " + bookedSlotsInSession + ").");
         } catch (Exception e) {
-            logToFile("[BookingWorker - " + userId + "] Failed to save booked slot total: " + e.getMessage());
+            logToFile("[BookingWorker - " + userId + "] Failed to immediately save booked slot count: " + e.getMessage());
         }
+    }
+
+    private void saveBookedSlotsIfAny() {
+        // This is a safety-net fallback — increments are already saved immediately after each booking.
+        // This handles the rare case where an immediate save failed mid-session.
+        if (bookedSlotsInSession <= 0) {
+            return;
+        }
+        logToFile("[BookingWorker - " + userId + "] Session ended. Total slots booked this session: " + bookedSlotsInSession);
     }
 
     private void logDebugToFile(String message) {
