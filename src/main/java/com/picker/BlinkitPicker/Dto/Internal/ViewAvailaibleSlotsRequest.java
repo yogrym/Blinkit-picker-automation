@@ -2,10 +2,24 @@ package com.picker.BlinkitPicker.Dto.Internal;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 
-public class VewAvailaibleSlotsRequest {
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@Builder
+@AllArgsConstructor
+@NoArgsConstructor
+public class ViewAvailaibleSlotsRequest {
+
     private LocationInfo locationInfo;
 
-    public class LocationInfo {
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class LocationInfo {
         @JsonProperty("latitude")
         private double xLat;
         @JsonProperty("longitude")

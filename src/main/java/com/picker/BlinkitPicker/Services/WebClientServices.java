@@ -11,6 +11,7 @@ import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
 import com.picker.BlinkitPicker.Dto.Internal.BookSlotsRequest;
+import com.picker.BlinkitPicker.Dto.Internal.ViewAvailaibleSlotsRequest;
 import com.picker.BlinkitPicker.Dto.request.CognitoRefreshTokenRequest;
 import com.picker.BlinkitPicker.Dto.request.FetchSlotsRequest;
 import com.picker.BlinkitPicker.Dto.request.OtpAuthRequest;
@@ -21,6 +22,7 @@ import com.picker.BlinkitPicker.Dto.respons.GlobalRespons;
 import com.picker.BlinkitPicker.Dto.respons.OtpAuthRespons;
 import com.picker.BlinkitPicker.Dto.respons.VerifyOtpRespons;
 import com.picker.BlinkitPicker.Exception.CognitoException;
+import com.picker.BlinkitPicker.Dto.respons.AvailableSlotsRespons;
 import com.picker.BlinkitPicker.Model.UserModel;
 import com.picker.BlinkitPicker.Util.ContextDataUtil;
 import org.springframework.web.reactive.function.client.WebClientRequestException;
@@ -41,6 +43,9 @@ public class WebClientServices {
 
         @Value("${list.slots.url}")
         private String listSlotsUrl;
+
+        @Value("${available.dates.url}")
+        private String availableSlotsUrl;
 
         @Value("${book.slot.url}")
         private String bookSlotsUrl;
@@ -169,7 +174,8 @@ public class WebClientServices {
                                 .header("requestid", requestId)
                                 .header("cookie", "__cf_bm=" + cfBm)
                                 .header("authorization", authHeader)
-                                .header("user-agent", userAgent != null ? userAgent : "com.blinkitstoreops/156301 (Linux; Android 10; CPH1819)")
+                                .header("user-agent", userAgent != null ? userAgent
+                                                : "com.blinkitstoreops/156301 (Linux; Android 10; CPH1819)")
                                 .header("x-device-id", xDeviceId)
                                 .header("x-role", role)
                                 .header("x-employeeid", employeeId)
@@ -206,7 +212,8 @@ public class WebClientServices {
                                 .header("requestid", requestId)
                                 .header("cookie", "__cf_bm=" + cfBm)
                                 .header("authorization", authHeader)
-                                .header("user-agent", userAgent != null ? userAgent : "com.blinkitstoreops/156301 (Linux; Android 10; CPH1819)")
+                                .header("user-agent", userAgent != null ? userAgent
+                                                : "com.blinkitstoreops/156301 (Linux; Android 10; CPH1819)")
                                 .header("x-device-id", user.getUserHeaders().getXDeviceId())
                                 .header("x-role", user.getRole() != null ? user.getRole().toString() : "PICKER")
                                 .header("x-employeeid", user.getUserHeaders().getEmployeeId())
@@ -227,6 +234,32 @@ public class WebClientServices {
                                         System.out.println("[WebClient - ERROR] Failed to book slots: "
                                                         + bookSlotsRequest.getSlotIds() + " at times: " + timesLog);
                                 });
+        }
+
+        public Mono<AvailableSlotsRespons> getAvailableSlots(String cfBm, String requestId, String httpSessionToken,
+                        String sessionToken, String siteId, UserModel user, ViewAvailaibleSlotsRequest viewAvailableSlotsRequest,
+                        String jwt, String userAgent) {
+                
+                String authHeader = jwt != null && jwt.startsWith("Bearer ") ? jwt : "Bearer " + jwt;
+
+                return blinkClient.post()
+                                .uri(availableSlotsUrl)
+                                .header("requestid", requestId)
+                                .header("cookie", "__cf_bm=" + cfBm)
+                                .header("authorization", authHeader)
+                                .header("user-agent", userAgent != null ? userAgent
+                                                : "com.blinkitstoreops/156301 (Linux; Android 10; CPH1819)")
+                                .header("x-device-id", user.getUserHeaders().getXDeviceId())
+                                .header("x-role", user.getRole() != null ? user.getRole().toString() : "PICKER")
+                                .header("x-employeeid", user.getUserHeaders().getEmployeeId())
+                                .header("x-lat", user.getUserHeaders().getXLat())
+                                .header("x-long", user.getUserHeaders().getXLong())
+                                .header("http_session_token", httpSessionToken)
+                                .header("session-token", sessionToken)
+                                .header("site-id", siteId)
+                                .bodyValue(viewAvailableSlotsRequest)
+                                .retrieve()
+                                .bodyToMono(AvailableSlotsRespons.class);
         }
 
 }

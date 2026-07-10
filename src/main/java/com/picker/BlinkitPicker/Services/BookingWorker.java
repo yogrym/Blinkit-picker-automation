@@ -105,16 +105,29 @@ public class BookingWorker implements Runnable {
             String endDateUtc = DateToUtc.getDateToUtc(dates.get(i));
             String startDateUtc = DateToUtc.getPrevDateToUtc(endDateUtc);
 
+            double xLat = 0.0;
+            double xLong = 0.0;
+            if (user.getUserHeaders() != null) {
+                String latStr = user.getUserHeaders().getXLat();
+                String longStr = user.getUserHeaders().getXLong();
+                if (latStr != null && !latStr.isBlank()) {
+                    try {
+                        xLat = Double.parseDouble(latStr.trim());
+                    } catch (NumberFormatException ignored) {}
+                }
+                if (longStr != null && !longStr.isBlank()) {
+                    try {
+                        xLong = Double.parseDouble(longStr.trim());
+                    } catch (NumberFormatException ignored) {}
+                }
+            }
+
             FetchSlotsRequest request = FetchSlotsRequest.builder()
                     .endDate(endDateUtc)
                     .startDate(startDateUtc)
                     .locationInfo(FetchSlotsRequest.Location.builder()
-                            .xLat(user.getUserHeaders().getXLat() != null
-                                    ? Double.parseDouble(user.getUserHeaders().getXLat())
-                                    : 0.0)
-                            .xLong(user.getUserHeaders().getXLong() != null
-                                    ? Double.parseDouble(user.getUserHeaders().getXLong())
-                                    : 0.0)
+                            .xLat(xLat)
+                            .xLong(xLong)
                             .build())
                     .build();
 

@@ -148,4 +148,14 @@ public class MainController {
 
     }
 
+    @GetMapping("get-slots")
+    public ResponseEntity<?> getSlots(@RequestHeader("Authorization") String token) {
+
+        try {
+            return ResponseEntity.ok(bookingServices.getAvailableSlots(token));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
 }

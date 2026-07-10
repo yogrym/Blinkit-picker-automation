@@ -3,21 +3,23 @@ package com.picker.BlinkitPicker.Services;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
-import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Service;
 
 import com.picker.BlinkitPicker.Dto.WorkerList;
-import com.picker.BlinkitPicker.Dto.WorkerList.BookingData;
 import com.picker.BlinkitPicker.Dto.request.BookingRequest;
+import com.picker.BlinkitPicker.Dto.respons.AvailableSlotsRespons;
 import com.picker.BlinkitPicker.Dto.respons.LogsResponse;
 import com.picker.BlinkitPicker.Dto.respons.SessionDateTimeRespons;
 import com.picker.BlinkitPicker.Dto.Logs;
 import com.picker.BlinkitPicker.Model.BookingTaskModel;
 import com.picker.BlinkitPicker.Model.UserModel;
+import com.picker.BlinkitPicker.Model.UserHeaderModel;
 import com.picker.BlinkitPicker.Repository.BookingTaskRepo;
 import com.picker.BlinkitPicker.Repository.UserRepo;
+import com.picker.BlinkitPicker.Dto.Internal.ViewAvailaibleSlotsRequest;
+import com.picker.BlinkitPicker.Util.GenerateCookie;
 import com.picker.BlinkitPicker.Util.SessionIdGenerator;
-
+import reactor.core.publisher.Mono;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.*;
@@ -312,7 +314,7 @@ public class BookingServices implements ApplicationRunner {
         return true;
     }
 
-    public com.picker.BlinkitPicker.Dto.respons.SessionDateTimeRespons getSessionTimeAndDate(String token, String sessionId) {
+    public SessionDateTimeRespons getSessionTimeAndDate(String token, String sessionId) {
         if (token != null && token.startsWith("Bearer ")) {
             token = token.substring(7);
         }
@@ -337,10 +339,67 @@ public class BookingServices implements ApplicationRunner {
         var task = bookingTaskRepo.findByUserIdAndSessionIdAndActiveTrue(userId, sessionId)
                 .orElseThrow(() -> new RuntimeException("Session not found"));
 
-        return com.picker.BlinkitPicker.Dto.respons.SessionDateTimeRespons.builder()
+        return SessionDateTimeRespons.builder()
                 .dates(task.getDates())
                 .times(task.getTimes())
                 .build();
+    }
+
+    public AvailableSlotsRespons getAvailableSlots(String token) {
+        if (token != null && token.startsWith("Bearer ")) {
+            token = token.substring(7);
+        }
+
+        Long userId = jwtServices.extractUserId(token);
+
+        if (userId == null) {
+            throw new RuntimeException("Invalid token");
+        } else {
+            UserModel user = userRepo.findById(userId).orElseThrow(() -> new RuntimeException("User not found"));
+
+            UserHeaderModel headers = user.getUserHeaders();
+            if (headers == null) {
+                throw new RuntimeException("User headers are not configured. Please login again.");
+            }
+
+            double xLat = 0.0;
+            double xLong = 0.0;
+            String latStr = headers.getXLat();
+            String longStr = headers.getXLong();
+            if (latStr != null && !latStr.isBlank()) {
+                try {
+                    xLat = Double.parseDouble(latStr.trim());
+                } catch (NumberFormatException ignored) {}
+            }
+            if (longStr != null && !longStr.isBlank()) {
+                try {
+                    xLong = Double.parseDouble(longStr.trim());
+                } catch (NumberFormatException ignored) {}
+            }
+
+            ViewAvailaibleSlotsRequest request = ViewAvailaibleSlotsRequest.builder()
+                .locationInfo(ViewAvailaibleSlotsRequest.LocationInfo.builder()
+                    .xLat(xLat)
+                    .xLong(xLong)
+                    .placeId("")
+                    .placeName("")
+                    .build())
+                .build();
+
+            Mono<AvailableSlotsRespons> response = webClientServices.getAvailableSlots(
+                GenerateCookie.generateCfBmCookie(),
+                GenerateCookie.generateRequestId(),
+                GenerateCookie.generateHttpSessionToken(),
+                GenerateCookie.generateSessionToken(),
+                headers.getSiteId(),
+                user,
+                request,
+                headers.getAuthorization(),
+                headers.getUserAgent()
+            );
+
+            return response.block();
+        }
     }
 
 }
