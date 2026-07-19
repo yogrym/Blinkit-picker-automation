@@ -1,6 +1,5 @@
 package com.picker.BlinkitPicker.Controller;
 
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -16,19 +15,18 @@ import org.springframework.web.bind.annotation.RequestParam;
 import com.picker.BlinkitPicker.Dto.WorkerList;
 import com.picker.BlinkitPicker.Dto.request.BookingRequest;
 import com.picker.BlinkitPicker.Dto.respons.LogsResponse;
-import com.picker.BlinkitPicker.Dto.Logs;
 import com.picker.BlinkitPicker.Services.BookingServices;
-import com.picker.BlinkitPicker.Services.GlobalServices;
-
-import java.util.List;
-import jakarta.validation.Valid;
 
 @RestController
 @RequestMapping("/task")
 public class MainController {
 
-    @Autowired
-    private BookingServices bookingServices;
+    
+    private final BookingServices bookingServices;
+
+    public MainController(BookingServices bookingServices) {
+        this.bookingServices = bookingServices;
+    }
 
     @PostMapping("/booking")
     public ResponseEntity<?> startBooking(@RequestHeader("Authorization") String token,

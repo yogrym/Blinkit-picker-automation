@@ -8,6 +8,8 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.EnumType;
@@ -68,10 +70,14 @@ public class UserModel {
 
     @Column(name = "expires_at")
     private LocalDateTime expiresAt;
-
+    
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "user_headers", nullable = true, columnDefinition = "jsonb")
     private UserHeaderModel userHeaders;
+
+    @ManyToOne
+    @JoinColumn(name = "store_id")
+    private StoreModel store;
 
     @NotNull
     @Enumerated(EnumType.STRING)
