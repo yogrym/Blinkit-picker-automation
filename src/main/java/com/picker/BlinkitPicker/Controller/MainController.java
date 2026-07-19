@@ -16,6 +16,7 @@ import com.picker.BlinkitPicker.Dto.WorkerList;
 import com.picker.BlinkitPicker.Dto.request.BookingRequest;
 import com.picker.BlinkitPicker.Dto.respons.LogsResponse;
 import com.picker.BlinkitPicker.Services.BookingServices;
+import com.picker.BlinkitPicker.Services.OrderPollingServices;
 
 @RestController
 @RequestMapping("/task")
@@ -23,9 +24,11 @@ public class MainController {
 
     
     private final BookingServices bookingServices;
+    private final OrderPollingServices orderPollingServices;
 
-    public MainController(BookingServices bookingServices) {
+    public MainController(BookingServices bookingServices, OrderPollingServices orderPollingServices) {
         this.bookingServices = bookingServices;
+        this.orderPollingServices = orderPollingServices;
     }
 
     @PostMapping("/booking")
@@ -153,6 +156,36 @@ public class MainController {
             return ResponseEntity.ok(bookingServices.getAvailableSlots(token));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @GetMapping("/fetch-order")
+    public ResponseEntity<?> fetchOrder(@RequestHeader("Authorization") String token) {
+        if (token != null && token.startsWith("Bearer ")) {
+            token = token.substring(7);
+        } else {
+            return ResponseEntity.status(401).body("Invalid token");
+        }
+
+        try {
+            return ResponseEntity.ok(orderPollingServices.startPolling(token));
+        } catch (Exception e) {
+            return ResponseEntity.status(400).body(e.getMessage());
+        }
+    }
+
+    @PostMapping("/stop-polling")
+    public ResponseEntity<?> stopPolling(@RequestHeader("Authorization") String token) {
+        if (token != null && token.startsWith("Bearer ")) {
+            token = token.substring(7);
+        } else {
+            return ResponseEntity.status(401).body("Invalid token");
+        }
+
+        try {
+            return ResponseEntity.ok(orderPollingServices.stopPolling(token));
+        } catch (Exception e) {
+            return ResponseEntity.status(400).body(e.getMessage());
         }
     }
 
