@@ -37,7 +37,7 @@ public class SpringSecurity {
                         .requestMatchers("/health-check/**", "/auth/**", "/error")
                         .permitAll()
                         .requestMatchers("/task/**", "/user-details")
-                        .hasAnyRole(RoleEnum.ADMIN.name(), RoleEnum.USER.name(), RoleEnum.MAINTAINER.name())
+                        .hasAnyRole(RoleEnum.ADMIN.name(), RoleEnum.PICKER.name(), RoleEnum.MAINTAINER.name())
                         .requestMatchers("/admin/delete-user").hasRole(RoleEnum.ADMIN.name())
                         .requestMatchers("/admin/change-role").hasRole(RoleEnum.ADMIN.name())
                         .requestMatchers("/admin/renew-plan").hasRole(RoleEnum.ADMIN.name())

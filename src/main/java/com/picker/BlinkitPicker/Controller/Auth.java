@@ -10,7 +10,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.picker.BlinkitPicker.Dto.request.LoginRequest;
 import com.picker.BlinkitPicker.Dto.request.RefreshTokenRequest;
-import com.picker.BlinkitPicker.Dto.request.VerifyOtpClientRequest;
+import com.picker.BlinkitPicker.Dto.request.VerifyOtpRequest;
 import com.picker.BlinkitPicker.Services.AuthServices;
 
 import jakarta.validation.Valid;
@@ -21,14 +21,14 @@ public class Auth {
     @Autowired
     private AuthServices authService;
 
-    @PostMapping("/login")
+    @PostMapping("/send_otp")
     public ResponseEntity<?> sendOtp(@Valid @RequestBody LoginRequest loginRequest) {
-        return ResponseEntity.ok(authService.loginWithOtp(loginRequest));
+        return ResponseEntity.ok(authService.sendOtp(loginRequest));
     }
 
     @PostMapping("/verify")
-    public ResponseEntity<?> verifyOtp(@Valid @RequestBody VerifyOtpClientRequest verifyOtpClientRequest) {
-        return ResponseEntity.ok(authService.verifyLogin(verifyOtpClientRequest));
+    public ResponseEntity<?> verifyOtp(@Valid @RequestBody VerifyOtpRequest request) {
+        return ResponseEntity.ok(authService.verifyCode(request));
     }
 
     @PostMapping("/refresh")

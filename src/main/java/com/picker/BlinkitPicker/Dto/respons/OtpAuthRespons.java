@@ -12,22 +12,24 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class OtpAuthRespons {
 
-    @JsonProperty("ChallengeName")
-    private String challengeName;
 
-    @JsonProperty("ChallengeParameters")
-    private ChallengeParameters challengeParameters;
+    @JsonProperty("login")
+    private boolean login;
 
-    @JsonProperty("Session")
-    private String session;
+    @JsonProperty("action")
+    private String action;
 
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class ChallengeParameters {
+    @JsonProperty("sms_sent")
+    private boolean smsSent;
 
-        @JsonProperty("USERNAME")
-        private String username;
-    }
+    @JsonProperty("message_id")
+    private String messageId;
+
+    @JsonProperty("success")
+    private boolean success;
+
+    @JsonProperty("message")
+    private String message;
+
+    
 }

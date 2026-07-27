@@ -46,8 +46,8 @@ public class UserModel {
     @Column(unique = true, name = "phone_number")
     private String phone;
 
-    @Column(name = "jwt", nullable = true, columnDefinition = "TEXT")
-    private String jwt;
+    @Column(name = "acessToken", nullable = true, columnDefinition = "TEXT")
+    private String accessToken;
 
     @Column(name = "refresh_token", nullable = true, columnDefinition = "TEXT")
     private String refreshToken;

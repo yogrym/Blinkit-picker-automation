@@ -11,29 +11,26 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class VerifyOtpRespons {
+    
+    @JsonProperty("access_token")
+    private String accessToken;
 
-    @JsonProperty("AuthenticationResult")
-    private AuthenticationResult authenticationResult;
+    private String message;
+    private boolean success;
+    private User user;
+    private boolean verified;
+
+    @JsonProperty("refresh_token")
+    private String refreshToken;
 
     @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class AuthenticationResult {
+    public static class User {
+        @JsonProperty("date_now")
+        private long dateNow;
 
-        @JsonProperty("AccessToken")
-        private String accessToken;
-
-        @JsonProperty("IdToken")
-        private String idToken;
-
-        @JsonProperty("RefreshToken")
-        private String refreshToken;
-
-        @JsonProperty("ExpiresIn")
-        private Integer expiresIn;
-
-        @JsonProperty("TokenType")
-        private String tokenType;
+        private String id;
+        private String phone;
     }
+
+
 }

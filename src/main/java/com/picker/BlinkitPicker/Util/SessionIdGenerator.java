@@ -12,4 +12,9 @@ public class SessionIdGenerator {
         // Generating a UUID and removing hyphens for a cleaner session string
         return UUID.randomUUID().toString().replace("-", "");
     }
+
+    public static String grTraceId() {
+    return UUID.randomUUID().toString();
+    
+    }
 }

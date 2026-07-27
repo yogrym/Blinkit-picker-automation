@@ -7,24 +7,31 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
-import com.picker.BlinkitPicker.Dto.Internal.BookSlotsRequest;
-import com.picker.BlinkitPicker.Dto.Internal.ViewAvailaibleSlotsRequest;
+import com.picker.BlinkitPicker.Dto.Internal_Request.AuthHeader;
+import com.picker.BlinkitPicker.Dto.Internal_Request.BookSlotsRequest;
+import com.picker.BlinkitPicker.Dto.Internal_Request.LoginRequestBody;
+import com.picker.BlinkitPicker.Dto.Internal_Request.ViewAvailaibleSlotsRequest;
+import com.picker.BlinkitPicker.Dto.Internal_Respons.LoginRespons;
 import com.picker.BlinkitPicker.Dto.request.CognitoRefreshTokenRequest;
 import com.picker.BlinkitPicker.Dto.request.FetchSlotsRequest;
-import com.picker.BlinkitPicker.Dto.request.OtpAuthRequest;
 import com.picker.BlinkitPicker.Dto.request.VerifyOtpRequest;
 import com.picker.BlinkitPicker.Dto.respons.CognitoRefreshTokenRespons;
 import com.picker.BlinkitPicker.Dto.respons.FetchSlotsResponse;
 import com.picker.BlinkitPicker.Dto.respons.GlobalRespons;
 import com.picker.BlinkitPicker.Dto.respons.OtpAuthRespons;
 import com.picker.BlinkitPicker.Dto.respons.VerifyOtpRespons;
+import com.picker.BlinkitPicker.Enums.ConfigEnums;
 import com.picker.BlinkitPicker.Exception.CognitoException;
 import com.picker.BlinkitPicker.Dto.respons.AvailableSlotsRespons;
 import com.picker.BlinkitPicker.Model.UserModel;
 import com.picker.BlinkitPicker.Util.ContextDataUtil;
+import com.picker.BlinkitPicker.cache.ConfigCache;
+
 import org.springframework.web.reactive.function.client.WebClientRequestException;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 
@@ -38,28 +45,22 @@ public class WebClientServices {
         @Qualifier("blinkitWebClient")
         private WebClient blinkClient;
 
-        @Value("${cognito.clientId}")
-        private String clientId;
+        private final ConfigCache configCache;
 
-        @Value("${list.slots.url}")
-        private String listSlotsUrl;
+        public WebClientServices(ConfigCache configCache) {
+                this.configCache = configCache;
+        }
 
-        @Value("${available.dates.url}")
-        private String availableSlotsUrl;
+      
+        public OtpAuthRespons sendOtpToUser(String phoneNumber,AuthHeader headers) {
+                
+                String sendOtpUrl = configCache.getAppCache().get(ConfigEnums.SEND_OTP);
 
-        @Value("${book.slot.url}")
-        private String bookSlotsUrl;
+                 MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
+                 body.add("user_phone", phoneNumber);
+                 body.add("country_code", "91");
 
-        @Value("${cognito.poolId}")
-        private String poolId;
-
-        @Value("${cognito.url}")
-        private String uri;
-
-        public OtpAuthRespons sendOtpToUser(String phoneNumber) {
-                String cognitoPhoneNumber = toIndianE164PhoneNumber(phoneNumber);
-
-                OtpAuthRequest authBody = OtpAuthRequest.builder()
+              /* OtpAuthRequest authBody = OtpAuthRequest.builder()
                                 .authFlow("CUSTOM_AUTH")
                                 .clientId(clientId)
                                 .authParameters(OtpAuthRequest.AuthParameters.builder()
@@ -72,15 +73,47 @@ public class WebClientServices {
                                                                 poolId,
                                                                 cognitoPhoneNumber))
                                                 .build())
-                                .build();
+                                .build(); */  
 
                 try {
                         return webClient.post()
-                                        .uri(this.uri)
-                                        .header("Content-Type", "application/x-amz-json-1.1")
+                                        .uri(sendOtpUrl)
+                                        /*
+                                         .header("Content-Type", "application/x-amz-json-1.1")
                                         .header("x-amz-target", "AWSCognitoIdentityProviderService.InitiateAuth")
                                         .header("amz-sdk-invocation-id", UUID.randomUUID().toString())
-                                        .bodyValue(authBody)
+                                        */
+                                        .header("x-device-manufacturer", safeHeader(headers.getDeviceManufacturer()))
+                                        .header("x-app-version-code", safeHeader(headers.getAppVersionCode()))
+                                        .header("x-supply-apps-kit-version", safeHeader(headers.getSupplyAppsKitVersion()))
+                                        .header("version_name", safeHeader(headers.getVersionName()))
+                                        .header("app_client", safeHeader(headers.getAppClient()))
+                                        .header("x-device-id", safeHeader(headers.getDeviceId()))
+                                        .header("version_code", safeHeader(headers.getVersionCode()))
+                                        .header("x-client-name", safeHeader(headers.getClientName()))
+                                        .header("model", safeHeader(headers.getModel()))
+                                        .header("x-device-hardware-type", safeHeader(headers.getDeviceHardwareType()))
+                                        .header("x-app-version", safeHeader(headers.getAppVersion()))
+                                        .header("version", safeHeader(headers.getVersion()))
+                                        .header("x-app-theme", safeHeader(headers.getAppTheme()))
+                                        .header("x-app-appearance", safeHeader(headers.getAppAppearance()))
+                                        .header("x-system-appearance", safeHeader(headers.getSystemAppearance()))
+                                        .header("x-accessibility-voice-over-enabled", safeHeader(headers.getAccessibilityVoiceOverEnabled()))
+                                        .header("cookie", safeHeader(headers.getCookie()))
+                                        .header("accept", safeHeader(headers.getAccept()))
+                                        .header("access_token", safeHeader(headers.getAccessToken()))
+                                        .header("x-app-locale", safeHeader(headers.getAppLocale()))
+                                        .header("x-request-id", safeHeader(headers.getRequestId()))
+                                        .header("requestid", safeHeader(headers.getRequestIdLower()))
+                                        .header("x-api-key", safeHeader(headers.getApiKey()))
+                                        .header("x-lat", String.valueOf(headers.getLattitude()))
+                                        .header("x-long", String.valueOf(headers.getLongitude()))
+                                        .header("x-gr-trace-id", safeHeader(headers.getGrTraceId()))
+                                        .header("content-type", safeHeader(headers.getContentType()))
+                                        .header("user-agent", safeHeader(headers.getUserAgent()))
+                                        .header("accept-encoding", safeHeader(headers.getAcceptEncoding()))
+                                        .header("priority", safeHeader(headers.getPriority()))
+                                        .bodyValue(body)
                                         .retrieve()
                                         .bodyToMono(OtpAuthRespons.class)
                                         .block();
@@ -91,13 +124,17 @@ public class WebClientServices {
                 }
         }
 
-        public VerifyOtpRespons verifyOtp(String usernameUid, String answerAsOtp, String sessionString,
-                        String phoneNumber) {
-                String cognitoPhoneNumber = toIndianE164PhoneNumber(phoneNumber);
+        public VerifyOtpRespons verifyOtp(VerifyOtpRequest request,AuthHeader headers) {
+               
+                String verifyOtpUrl = configCache.getAppCache().get(ConfigEnums.VERIFY_OTP);
+
+                MultiValueMap<String, String> verifyBody = new LinkedMultiValueMap<>();
+                 verifyBody.add("user_phone", request.getUserNumber());
+                 verifyBody.add("verify_code", request.getOtp());
 
                 try {
                         return webClient.post()
-                                        .uri(this.uri)
+                                        /*.uri(this.uri)
                                         .header("Content-Type", "application/x-amz-json-1.1")
                                         .header("x-amz-target",
                                                         "AWSCognitoIdentityProviderService.RespondToAuthChallenge")
@@ -120,6 +157,39 @@ public class WebClientServices {
                                                                         .build())
                                                         .session(sessionString)
                                                         .build())
+                                        .retrieve() */
+                                        .uri(verifyOtpUrl)
+                                        .header("x-device-manufacturer", safeHeader(headers.getDeviceManufacturer()))
+                                        .header("x-app-version-code", safeHeader(headers.getAppVersionCode()))
+                                        .header("x-supply-apps-kit-version", safeHeader(headers.getSupplyAppsKitVersion()))
+                                        .header("version_name", safeHeader(headers.getVersionName()))
+                                        .header("app_client", safeHeader(headers.getAppClient()))
+                                        .header("x-device-id", safeHeader(headers.getDeviceId()))
+                                        .header("version_code", safeHeader(headers.getVersionCode()))
+                                        .header("x-client-name", safeHeader(headers.getClientName()))
+                                        .header("model", safeHeader(headers.getModel()))
+                                        .header("x-device-hardware-type", safeHeader(headers.getDeviceHardwareType()))
+                                        .header("x-app-version", safeHeader(headers.getAppVersion()))
+                                        .header("version", safeHeader(headers.getVersion()))
+                                        .header("x-app-theme", safeHeader(headers.getAppTheme()))
+                                        .header("x-app-appearance", safeHeader(headers.getAppAppearance()))
+                                        .header("x-system-appearance", safeHeader(headers.getSystemAppearance()))
+                                        .header("x-accessibility-voice-over-enabled", safeHeader(headers.getAccessibilityVoiceOverEnabled()))
+                                        .header("cookie", safeHeader(headers.getCookie()))
+                                        .header("accept", safeHeader(headers.getAccept()))
+                                        .header("access_token", safeHeader(headers.getAccessToken()))
+                                        .header("x-app-locale", safeHeader(headers.getAppLocale()))
+                                        .header("x-request-id", safeHeader(headers.getRequestId()))
+                                        .header("requestid", safeHeader(headers.getRequestIdLower()))
+                                        .header("x-api-key", safeHeader(headers.getApiKey()))
+                                        .header("x-lat", String.valueOf(headers.getLattitude()))
+                                        .header("x-long", String.valueOf(headers.getLongitude()))
+                                        .header("x-gr-trace-id", safeHeader(headers.getGrTraceId()))
+                                        .header("content-type", safeHeader(headers.getContentType()))
+                                        .header("user-agent", safeHeader(headers.getUserAgent()))
+                                        .header("accept-encoding", safeHeader(headers.getAcceptEncoding()))
+                                        .header("priority", safeHeader(headers.getPriority()))
+                                        .bodyValue(verifyBody)
                                         .retrieve()
                                         .bodyToMono(VerifyOtpRespons.class)
                                         .block();
@@ -129,6 +199,9 @@ public class WebClientServices {
                         throw new CognitoException(503, "Something went wrong while connecting: " + e.getMessage());
                 }
         }
+
+
+        /* 
 
         public CognitoRefreshTokenRespons refreshToken(String refreshToken) {
                 return webClient.post()
@@ -148,18 +221,59 @@ public class WebClientServices {
                                 .block();
         }
 
-        private String toIndianE164PhoneNumber(String phoneNumber) {
-                if (phoneNumber == null || phoneNumber.isBlank()) {
-                        return phoneNumber;
-                }
 
-                String digitsOnly = phoneNumber.replaceAll("\\D", "");
-                if (digitsOnly.startsWith("91") && digitsOnly.length() == 12) {
-                        return "+" + digitsOnly;
-                }
+        */
 
-                return "+91" + digitsOnly;
+
+        public LoginRespons loginUser(AuthHeader headers, VerifyOtpRequest request) {
+
+                String loginUrl = configCache.getAppCache().get(ConfigEnums.LOGIN);
+
+                LoginRequestBody body = LoginRequestBody.builder()
+                                .phone(request.getUserNumber())
+                                .rfid(false)
+                                .context("STOREOPS")
+                                .build();
+
+                return webClient.post()
+                                .uri(loginUrl)
+                                .header("x-device-manufacturer", safeHeader(headers.getDeviceManufacturer()))
+                                        .header("x-app-version-code", safeHeader(headers.getAppVersionCode()))
+                                        .header("x-supply-apps-kit-version", safeHeader(headers.getSupplyAppsKitVersion()))
+                                        .header("version_name", safeHeader(headers.getVersionName()))
+                                        .header("app_client", safeHeader(headers.getAppClient()))
+                                        .header("x-device-id", safeHeader(headers.getDeviceId()))
+                                        .header("version_code", safeHeader(headers.getVersionCode()))
+                                        .header("x-client-name", safeHeader(headers.getClientName()))
+                                        .header("model", safeHeader(headers.getModel()))
+                                        .header("x-device-hardware-type", safeHeader(headers.getDeviceHardwareType()))
+                                        .header("x-app-version", safeHeader(headers.getAppVersion()))
+                                        .header("version", safeHeader(headers.getVersion()))
+                                        .header("x-app-theme", safeHeader(headers.getAppTheme()))
+                                        .header("x-app-appearance", safeHeader(headers.getAppAppearance()))
+                                        .header("x-system-appearance", safeHeader(headers.getSystemAppearance()))
+                                        .header("x-accessibility-voice-over-enabled", safeHeader(headers.getAccessibilityVoiceOverEnabled()))
+                                        .header("cookie", safeHeader(headers.getCookie()))
+                                        .header("accept", safeHeader(headers.getAccept()))
+                                        .header("access_token", safeHeader(headers.getAccessToken()))
+                                        .header("x-app-locale", safeHeader(headers.getAppLocale()))
+                                        .header("x-request-id", safeHeader(headers.getRequestId()))
+                                        .header("requestid", safeHeader(headers.getRequestIdLower()))
+                                        .header("x-api-key", safeHeader(headers.getApiKey()))
+                                        .header("x-lat", String.valueOf(headers.getLattitude()))
+                                        .header("x-long", String.valueOf(headers.getLongitude()))
+                                        .header("x-gr-trace-id", safeHeader(headers.getGrTraceId()))
+                                        .header("content-type", safeHeader(headers.getContentType()))
+                                        .header("user-agent", safeHeader(headers.getUserAgent()))
+                                        .header("accept-encoding", safeHeader(headers.getAcceptEncoding()))
+                                        .header("priority", safeHeader(headers.getPriority()))
+                                        .bodyValue(body)
+                                .retrieve()
+                                .bodyToMono(LoginRespons.class)
+                                .block();
         }
+
+       
 
         public Mono<FetchSlotsResponse> getSlotsDetails(String cfBm, String requestId, String jwt,
                         FetchSlotsRequest fetchSlotsRequest, String siteId, String employeeId, String userAgent,
@@ -238,9 +352,10 @@ public class WebClientServices {
 
         public Mono<AvailableSlotsRespons> getAvailableSlots(String cfBm, String requestId, String httpSessionToken,
                         String sessionToken, String siteId, UserModel user, ViewAvailaibleSlotsRequest viewAvailableSlotsRequest,
-                        String jwt, String userAgent) {
+                        String jwt, AuthHeader headers) {
                 
                 String authHeader = jwt != null && jwt.startsWith("Bearer ") ? jwt : "Bearer " + jwt;
+                String availableSlotsUrl = configCache.getAppCache().get(ConfigEnums.AVAILAIABLE_SLOTS);
 
                 return blinkClient.post()
                                 .uri(availableSlotsUrl)
@@ -260,6 +375,10 @@ public class WebClientServices {
                                 .bodyValue(viewAvailableSlotsRequest)
                                 .retrieve()
                                 .bodyToMono(AvailableSlotsRespons.class);
+        }
+
+        private String safeHeader(String value) {
+                return value != null ? value : "";
         }
 
 }

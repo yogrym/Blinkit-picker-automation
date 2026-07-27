@@ -16,6 +16,6 @@ public class ApiKeyGenerator {
         String randomString = Base64.getUrlEncoder().withoutPadding().encodeToString(randomBytes);
 
         // Attach your professional prefix
-        return "bp_live_" + randomString;
+        return "Bp" + randomString;
     }
 }

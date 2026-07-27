@@ -10,6 +10,15 @@ import lombok.Data;
 public class LoginRequest {
 
     @NotBlank
-    @JsonProperty("phone_number")
+    @JsonProperty("user_phone")
     private String phoneNumber;
+
+    @NotBlank
+    @JsonProperty("lat")
+    private double xLat;
+    
+    @NotBlank
+    @JsonProperty("long")
+    private double xLong;
+
 }

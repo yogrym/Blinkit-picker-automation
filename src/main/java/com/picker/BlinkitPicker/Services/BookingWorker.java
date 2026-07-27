@@ -8,7 +8,7 @@ import java.util.Map;
 import java.util.function.Supplier;
 
 import com.picker.BlinkitPicker.Dto.Logs;
-import com.picker.BlinkitPicker.Dto.Internal.BookSlotsRequest;
+import com.picker.BlinkitPicker.Dto.Internal_Request.BookSlotsRequest;
 import com.picker.BlinkitPicker.Dto.request.FetchSlotsRequest;
 import com.picker.BlinkitPicker.Dto.respons.CognitoRefreshTokenRespons;
 import com.picker.BlinkitPicker.Dto.respons.FetchSlotsResponse;

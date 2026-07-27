@@ -1,7 +1,7 @@
 package com.picker.BlinkitPicker.Enums;
 
 public enum RoleEnum {
-    USER,
+    PICKER,
     ADMIN,
     MAINTAINER;
 

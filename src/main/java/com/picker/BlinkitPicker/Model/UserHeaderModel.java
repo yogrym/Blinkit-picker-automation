@@ -16,44 +16,40 @@ import org.springframework.stereotype.Component;
 @AllArgsConstructor
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class UserHeaderModel {
+    
+    @JsonProperty("access_token")
+    private String accessToken;
+    
+    @JsonProperty("refresh_token")
+    private String refreshToken;
 
-    private String authorization;
 
-    @JsonProperty("content-type")
-    private String contentType;
 
-    private String accept;
-
-    @JsonProperty("user-agent")
-    @Builder.Default
-    private String userAgent = "com.blinkitstoreops/156301 (Linux; Android 10; CPH1819)";
-
-    @JsonProperty("x-device-id")
-    private String xDeviceId;
-
-    @JsonProperty("employeeid")
+    @JsonProperty("employee_id")
     private String employeeId;
 
-    @JsonProperty("employee-name")
+
+    @JsonProperty("phone")
+    private String phone;
+
+    @JsonProperty("name")
     private String employeeName;
 
     @JsonProperty("user-id")
     private String userId;
 
-    @JsonProperty("site-id")
+    @JsonProperty("active_site_id")
     private String siteId;
+
+    @JsonProperty("site_name")
+    private String siteName;
 
     private String role;
 
-    @JsonProperty("http_session_token")
-    private String httpSessionToken;
-
-    @JsonProperty("session-token")
-    private String sessionToken;
 
     @JsonProperty("x-lat")
-    private String xLat;
+    private double xLat;
 
     @JsonProperty("x-long")
-    private String xLong;
+    private double xLong;
 }
