@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 
 import com.picker.BlinkitPicker.Dto.request.LoginRequest;
 import com.picker.BlinkitPicker.Dto.request.RefreshTokenRequest;
+import com.picker.BlinkitPicker.Dto.request.SignupRequest;
 import com.picker.BlinkitPicker.Dto.request.VerifyOtpClientRequest;
 import com.picker.BlinkitPicker.Dto.respons.CognitoRefreshTokenRespons;
 import com.picker.BlinkitPicker.Dto.respons.LoginRespons;
@@ -32,22 +33,34 @@ public class AuthServices {
 
     private final UserRepo userRepo;
     private final JwtServices jwtServices;
+    private final WebClientServices webClientServices;
+    private final AdminServices adminServices;
 
-    @Autowired
-    private WebClientServices webClientServices;
+    
 
-    public AuthServices(UserRepo userRepo, JwtServices jwtServices) {
+    public AuthServices(UserRepo userRepo, JwtServices jwtServices, AdminServices adminServices, WebClientServices webClientServices) {
         this.userRepo = userRepo;
         this.jwtServices = jwtServices;
+        this.adminServices = adminServices;
+        this.webClientServices = webClientServices;
     }
 
     public ResponseEntity<?> loginWithOtp(LoginRequest loginRequest) {
 
         Optional<UserModel> userOpt = userRepo.findByPhone(loginRequest.getPhoneNumber());
 
-        if (userOpt.isEmpty()) {
-            return ResponseEntity.status(400).body("Invalid phone number");
+         if (userOpt.isEmpty()) {
+
+            SignupRequest signupRequest = SignupRequest.builder()
+                    .phone(loginRequest.getPhoneNumber())
+                    .plan("weekly")
+                    .build();
+
+           adminServices.addFreeUser(signupRequest);
+           userOpt = userRepo.findByPhone(loginRequest.getPhoneNumber());
         }
+    
+       
 
         OtpAuthRespons respons = webClientServices.sendOtpToUser(userOpt.get().getPhone());
         if (respons.getChallengeName() == null) {
