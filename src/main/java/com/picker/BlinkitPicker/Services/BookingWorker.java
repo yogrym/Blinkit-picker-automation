@@ -6,6 +6,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
+import org.slf4j.Logger;
 
 import com.picker.BlinkitPicker.Dto.Logs;
 import com.picker.BlinkitPicker.Dto.Internal.BookSlotsRequest;
@@ -20,20 +21,24 @@ import com.picker.BlinkitPicker.Repository.UserRepo;
 import com.picker.BlinkitPicker.Util.DateToUtc;
 import com.picker.BlinkitPicker.Util.GenerateCookie;
 
+
 import lombok.Getter;
 import lombok.Setter;
+import lombok.extern.slf4j.Slf4j;
 
+import org.slf4j.LoggerFactory;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 import reactor.core.publisher.Mono;
 
 @Getter
 @Setter
+@Slf4j
 public class BookingWorker implements Runnable {
 
-    private static final int MAX_IN_MEMORY_LOGS = 100;
-    private static final boolean ENABLE_VERBOSE_FILE_LOGS = false;
-    private static final boolean ENABLE_CONSOLE_LOGS = false;
+    private static final int MAX_IN_MEMORY_LOGS_SIZE = 20;
+    private static final Logger logger =  LoggerFactory.getLogger(BookingWorker.class);
+    private static final Logger fileLogger = LoggerFactory.getLogger("BOOKING_FILE");
 
     private String userId;
     private List<String> dates;
@@ -48,7 +53,7 @@ public class BookingWorker implements Runnable {
 
     private WebClientServices webClientServices;
 
-    private final List<Logs> logs = Collections.synchronizedList(new ArrayList<>());
+    private final List<Logs> inMemoryUserLogs = Collections.synchronizedList(new ArrayList<>());
     private long bookedSlotsInSession = 0L;
     private boolean bookedSlotsSaved = false;
 
@@ -131,11 +136,7 @@ public class BookingWorker implements Runnable {
                             .build())
                     .build();
 
-            logToFile("[BookingWorker - " + userId + "] Fetching slots for storeId: " + storeId
-                    + " | date: " + dates.get(i)
-                    + " | endDate(UTC): " + endDateUtc
-                    + " | startDate(UTC): " + startDateUtc
-                    + " | time_filter: " + times);
+           logger.info("slot fetching started start date {} : ", endDateUtc);
 
             try {
                 UserHeaderModel headers = user.getUserHeaders();
@@ -145,7 +146,7 @@ public class BookingWorker implements Runnable {
                 String xDeviceId = headers.getXDeviceId();
                 String siteId = headers.getSiteId();
 
-                logDebugToFile("[BookingWorker - " + userId + "] Headers: " + headers.toString());
+                logger.debug("[BookingWorker - " + userId + "] Headers: " + headers.toString());
 
                 final String fetchCfBm = cfbm;
                 final String fetchRequestId = requestId;
@@ -178,13 +179,8 @@ public class BookingWorker implements Runnable {
                                     storeId, user, sessionToken, httpSessionToken, timesLog));
 
                     if (bookingResponse.isSuccess()) {
-                        logToFile("[BookingWorker - " + userId + "] SUCCESS! Booked slots " + slotIds
-                                + " on date " + dates.get(i));
+                        addInMemoryLog("SUCCESS! Booked slots " + slotIds + " on date " + dates.get(i));
                         incrementBookedSlots(slotIds.size());
-                        for (String slotId : slotIds) {
-                            String timing = slotIdToTime.get(slotId);
-                            addInMemoryLog("Booked slot | " + timing + " | " + dates.get(i) + " | ID: " + slotId);
-                        }
                         continue;
                     } else {
                         // Bulk booking failed — retry each slot individually (same as bot's one-by-one
@@ -208,29 +204,20 @@ public class BookingWorker implements Runnable {
                                             storeId, user, sessionToken, httpSessionToken, singleTimeLog));
 
                             if (bookingRetryResponse.isSuccess()) {
-                                logToFile("[BookingWorker - " + userId + "] SUCCESS on retry! Booked "
-                                        + currentSlotId + " on date " + dates.get(i));
+                                addInMemoryLog("SUCCESS on retry! Booked " + currentSlotId
+                                        + " on date " + dates.get(i));
                                 incrementBookedSlots(1);
-                                addInMemoryLog("Booked slot | " + slotIdToTime.get(currentSlotId) + " | " + dates.get(i) + " | ID: " + currentSlotId);
                             } else {
-                                logToFile("[BookingWorker - " + userId + "] FAILED to book slot "
-                                        + currentSlotId + " on date " + dates.get(i));
-                                addInMemoryLog("Failed to book slot for " + currentSlotId
+                                logToFile("[BookingWorker - " + userId + "] FAILED to book slot " + currentSlotId
                                         + " on date " + dates.get(i));
                             }
                         }
                     }
 
-                } else {
-                    logToFile("[BookingWorker - " + userId + "] No slots matched preferences for store "
-                            + storeId + " on date " + dates.get(i));
-                    addInMemoryLog("No slots available for " + storeId + " on date " + dates.get(i));
                 }
 
             } catch (Throwable e) {
-                logToFile("[BookingWorker - " + userId + "] Error in fetching/booking slots: " + e.toString());
-                addInMemoryLog("Error in fetching slots for " + storeId + " on date " + dates.get(i));
-                e.printStackTrace();
+                logToFile("[BookingWorker - " + userId + "] Slot fetch/booking failed: " + e.toString());
             }
         }
     }
@@ -402,8 +389,7 @@ public class BookingWorker implements Runnable {
     @Override
     public void run() {
         try {
-            logToFile("[BookingWorker - " + userId + "] Background thread started successfully!");
-            addInMemoryLog("Booking started");
+            addInMemoryLog("Booking intilized for dates: " + dates);
 
             while (!this.isStop) {
 
@@ -419,9 +405,6 @@ public class BookingWorker implements Runnable {
                 logDebugToFile("[BookingWorker - " + userId + "] Preparing to fetch slots. Found dates: " + dates);
 
                 if (dates == null || dates.isEmpty()) {
-                    logToFile("[BookingWorker - " + userId
-                            + "] ERROR: The 'dates' array is null or empty! Cannot fetch slots. Stopping worker.");
-                    addInMemoryLog("ERROR: The 'dates' array is null or empty! Cannot fetch slots. Stopping worker.");
                     this.isStop = true;
                     continue;
                 }
@@ -430,15 +413,14 @@ public class BookingWorker implements Runnable {
                     fecthSlots();
 
                     if (Boolean.TRUE.equals(isAdmin)) {
-                        Thread.sleep(100);
+                        Thread.sleep(10000);
                     } else {
-                        Thread.sleep(1000);
+                        Thread.sleep(40000);
                     }
                 } catch (InterruptedException e) {
                     break;
                 } catch (Throwable t) {
-                    logToFile("[BookingWorker - FATAL] Thread crashed: " + t.toString());
-                    t.printStackTrace();
+                    logToFile("[BookingWorker - " + userId + "] Worker stopped because of an error: " + t.toString());
                     break;
                 }
             }
@@ -448,17 +430,17 @@ public class BookingWorker implements Runnable {
     }
 
     public List<Logs> getLogs() {
-        synchronized (logs) {
-            return new ArrayList<>(logs);
+        synchronized (inMemoryUserLogs) {
+            return new ArrayList<>(inMemoryUserLogs);
         }
     }
 
     private void addInMemoryLog(String message) {
-        synchronized (logs) {
-            if (logs.size() >= MAX_IN_MEMORY_LOGS) {
-                logs.remove(0);
+        synchronized (inMemoryUserLogs) {
+            if (inMemoryUserLogs.size() >= MAX_IN_MEMORY_LOGS_SIZE) {
+                inMemoryUserLogs.remove(0);
             }
-            logs.add(Logs.builder()
+            inMemoryUserLogs.add(Logs.builder()
                     .logs(List.of(message))
                     .build());
         }
@@ -474,9 +456,8 @@ public class BookingWorker implements Runnable {
             Long currentTotal = latestUser.getTotalBookedSlots() != null ? latestUser.getTotalBookedSlots() : 0L;
             latestUser.setTotalBookedSlots(currentTotal + count);
             userRepo.save(latestUser);
-            logToFile("[BookingWorker - " + userId + "] Saved +" + count + " booked slots to DB (session total: " + bookedSlotsInSession + ").");
         } catch (Exception e) {
-            logToFile("[BookingWorker - " + userId + "] Failed to immediately save booked slot count: " + e.getMessage());
+            logToFile("[BookingWorker - " + userId + "] Failed to save booked slot count: " + e.toString());
         }
     }
 
@@ -486,28 +467,14 @@ public class BookingWorker implements Runnable {
         if (bookedSlotsInSession <= 0) {
             return;
         }
-        logToFile("[BookingWorker - " + userId + "] Session ended. Total slots booked this session: " + bookedSlotsInSession);
-    }
-
-    private void logDebugToFile(String message) {
-        if (ENABLE_VERBOSE_FILE_LOGS) {
-            logToFile(message);
-        }
     }
 
     private void logToFile(String message) {
-        if (ENABLE_CONSOLE_LOGS) {
-            System.out.println(message);
-        }
-        try {
-            java.nio.file.Files.writeString(
-                    java.nio.file.Paths.get("booking_worker.log"),
-                    java.time.LocalDateTime.now() + " - " + message + System.lineSeparator(),
-                    java.nio.file.StandardOpenOption.CREATE,
-                    java.nio.file.StandardOpenOption.APPEND);
-        } catch (Exception e) {
-            System.out.println("Failed to write to log file: " + e.getMessage());
-        }
+        fileLogger.info(message);
+    }
+
+    private void logDebugToFile(String message) {
+        fileLogger.debug(message);
     }
 
     public boolean removeOneDateFromList(String date) {
