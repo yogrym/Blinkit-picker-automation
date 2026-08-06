@@ -24,7 +24,16 @@ public class StoreModel {
     @Column(name = "store_name")
     private String storeName;
 
+    private Boolean available;
+
+    @Column(name = "max_users", nullable = false)
+    @Builder.Default
+    private Integer maxUsers = 3;
+
+    @Column(name = "total_user_count")
+    private Integer totalUserCount;
+
     @CreationTimestamp
-    @Column(name = "created_at", updatable = false)
+    @Column(name = "created_at")
     private LocalDateTime createdAt;
 }
