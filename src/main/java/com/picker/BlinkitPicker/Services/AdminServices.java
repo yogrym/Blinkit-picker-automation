@@ -83,6 +83,42 @@ public class AdminServices {
 
     }
 
+
+
+
+     public SignupRespons addFreeUser(SignupRequest request) {
+        Optional<UserModel> userOpt = userRepo.findByPhone(request.getPhone());
+
+        if (userOpt.isPresent()) {
+            return SignupRespons.builder()
+                    .status("failure")
+                    .message("cannot create new user, user exists with this phone number")
+                    .build();
+        }
+
+        
+
+        request.setRole(request.getRole() != null ? request.getRole() : RoleEnum.USER);
+
+        LocalDateTime expiresAt = LocalDateTime.now().plusWeeks(1); 
+       
+
+        UserModel user = UserModel.builder()
+                .phone(request.getPhone())
+                .role(request.getRole())
+                .apiKey(ApiKeyGenerator.generateApiKey())
+                .expiresAt(expiresAt)
+                .build();
+
+        userRepo.save(user);
+
+        return SignupRespons.builder()
+                .status("success")
+                .message("user created successfully")
+                .build();
+
+    }
+
     public AdminUserListResponse getUsers(Integer page, Integer size) {
         int safePage = page == null || page < 0 ? 0 : page;
         int requestedSize = size == null || size < 1 ? DEFAULT_USER_PAGE_SIZE : size;
