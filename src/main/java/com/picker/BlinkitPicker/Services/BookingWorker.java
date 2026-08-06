@@ -462,11 +462,14 @@ public class BookingWorker implements Runnable {
     }
 
     private void saveBookedSlotsIfAny() {
-        // This is a safety-net fallback — increments are already saved immediately after each booking.
-        // This handles the rare case where an immediate save failed mid-session.
+      
         if (bookedSlotsInSession <= 0) {
             return;
         }
+
+        user.setTotalBookedSlots(user.getTotalBookedSlots() + bookedSlotsInSession);
+        userRepo.save(user);
+        bookedSlotsSaved = true;
     }
 
     private void logToFile(String message) {
