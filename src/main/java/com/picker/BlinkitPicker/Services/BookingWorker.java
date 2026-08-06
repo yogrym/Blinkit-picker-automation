@@ -93,8 +93,7 @@ public class BookingWorker implements Runnable {
 
             String cfbm = GenerateCookie.generateCfBmCookie();
             String requestId = GenerateCookie.generateRequestId();
-            // Both http_session_token and session-token share the SAME UUID value per
-            // session
+          
             String sessionToken = GenerateCookie.generateSessionToken();
             String httpSessionToken = sessionToken;
 
@@ -104,9 +103,7 @@ public class BookingWorker implements Runnable {
 
             this.isAdmin = user.getRole().equals(RoleEnum.ADMIN);
 
-            // Bot logic:
-            // end_date = that day at 18:30 UTC (= midnight IST, start of that IST day)
-            // start_date = end_date - 1 day
+           // start and end date in UTC format for the API request
             String endDateUtc = DateToUtc.getDateToUtc(dates.get(i));
             String startDateUtc = DateToUtc.getPrevDateToUtc(endDateUtc);
 
@@ -386,48 +383,7 @@ public class BookingWorker implements Runnable {
         return matchedSlots;
     }
 
-    @Override
-    public void run() {
-        try {
-            addInMemoryLog("Booking intilized for dates: " + dates);
-
-            while (!this.isStop) {
-
-                if (this.isPaused) {
-                    try {
-                        Thread.sleep(50000);
-                    } catch (InterruptedException e) {
-                        break;
-                    }
-                    continue;
-                }
-
-                logDebugToFile("[BookingWorker - " + userId + "] Preparing to fetch slots. Found dates: " + dates);
-
-                if (dates == null || dates.isEmpty()) {
-                    this.isStop = true;
-                    continue;
-                }
-
-                try {
-                    fecthSlots();
-
-                    if (Boolean.TRUE.equals(isAdmin)) {
-                        Thread.sleep(10000);
-                    } else {
-                        Thread.sleep(40000);
-                    }
-                } catch (InterruptedException e) {
-                    break;
-                } catch (Throwable t) {
-                    logToFile("[BookingWorker - " + userId + "] Worker stopped because of an error: " + t.toString());
-                    break;
-                }
-            }
-        } finally {
-            saveBookedSlotsIfAny();
-        }
-    }
+   
 
     public List<Logs> getLogs() {
         synchronized (inMemoryUserLogs) {
@@ -488,5 +444,51 @@ public class BookingWorker implements Runnable {
     public boolean removeOneTimeFromList(String time) {
         times.remove(time);
         return true;
+    }
+
+
+
+     @Override
+    public void run() {
+        try {
+            addInMemoryLog("Booking intilized for dates: " + dates);
+
+            while (!this.isStop) {
+
+                if (this.isPaused) {
+                    try {
+                        Thread.sleep(50000);
+                    } catch (InterruptedException e) {
+                        break;
+                    }
+                    continue;
+                }
+
+                logDebugToFile("[BookingWorker - " + userId + "] Preparing to fetch slots. Found dates: " + dates);
+
+                if (dates == null || dates.isEmpty()) {
+                    this.isStop = true;
+                    continue;
+                }
+
+                try {
+
+                    fecthSlots();
+
+                    if (Boolean.TRUE.equals(isAdmin)) {
+                        Thread.sleep(2000);
+                    } else {
+                        Thread.sleep(5000);
+                    }
+                } catch (InterruptedException e) {
+                    break;
+                } catch (Throwable t) {
+                    logToFile("[BookingWorker - " + userId + "] Worker stopped because of an error: " + t.toString());
+                    break;
+                }
+            }
+        } finally {
+            saveBookedSlotsIfAny();
+        }
     }
 }
