@@ -1,5 +1,6 @@
-package com.picker.BlinkitPicker.Services;
+package com.picker.BlinkitPicker.Services.Worker;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -18,6 +19,7 @@ import com.picker.BlinkitPicker.Enums.RoleEnum;
 import com.picker.BlinkitPicker.Model.UserHeaderModel;
 import com.picker.BlinkitPicker.Model.UserModel;
 import com.picker.BlinkitPicker.Repository.UserRepo;
+import com.picker.BlinkitPicker.Services.WebClientServices;
 import com.picker.BlinkitPicker.Util.DateToUtc;
 import com.picker.BlinkitPicker.Util.GenerateCookie;
 
@@ -27,6 +29,7 @@ import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 
 import org.slf4j.LoggerFactory;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 import reactor.core.publisher.Mono;
@@ -35,12 +38,13 @@ import reactor.core.publisher.Mono;
 @Setter
 @Slf4j
 public class BookingWorker implements Runnable {
-
-    private static final int MAX_IN_MEMORY_LOGS_SIZE = 20;
+    
+    private static final Duration API_TIMEOUT = Duration.ofSeconds(2);
+    private static final int MAX_IN_MEMORY_LOGS_SIZE = 10;
     private static final Logger logger =  LoggerFactory.getLogger(BookingWorker.class);
-    private static final Logger fileLogger = LoggerFactory.getLogger("BOOKING_FILE");
 
     private String userId;
+    private String userEmployeeName;
     private List<String> dates;
     private List<String> times;
     private volatile boolean isPaused = false;
@@ -100,26 +104,38 @@ public class BookingWorker implements Runnable {
             this.jwtToken = user.getUserHeaders().getAuthorization();
             this.refreshToken = user.getRefreshToken();
             String storeId = user.getUserHeaders().getSiteId();
+            this.userEmployeeName = user.getUserHeaders().getEmployeeId();
+            this.isAdmin = user.getRole().equals(RoleEnum.ADMIN) || user.getRole().equals(RoleEnum.MAINTAINER);
 
-            this.isAdmin = user.getRole().equals(RoleEnum.ADMIN);
-
-           // start and end date in UTC format for the API request
+         
             String endDateUtc = DateToUtc.getDateToUtc(dates.get(i));
             String startDateUtc = DateToUtc.getPrevDateToUtc(endDateUtc);
 
             double xLat = 0.0;
             double xLong = 0.0;
+
             if (user.getUserHeaders() != null) {
+
                 String latStr = user.getUserHeaders().getXLat();
                 String longStr = user.getUserHeaders().getXLong();
+
                 if (latStr != null && !latStr.isBlank()) {
+
                     try {
+
                         xLat = Double.parseDouble(latStr.trim());
+                        logger.info("Parsed latitude: {}/ for user {}", xLat, userEmployeeName);
+                        addLog("Location latitude was parsed successfully.");
                     } catch (NumberFormatException ignored) {}
                 }
+
                 if (longStr != null && !longStr.isBlank()) {
+
                     try {
+
                         xLong = Double.parseDouble(longStr.trim());
+                        logger.info("Parsed longitude: {}/ for user {}", xLong, userEmployeeName);
+                        addLog("Location longitude was parsed successfully.");
                     } catch (NumberFormatException ignored) {}
                 }
             }
@@ -133,9 +149,11 @@ public class BookingWorker implements Runnable {
                             .build())
                     .build();
 
-           logger.info("slot fetching started start date {} : ", endDateUtc);
+           logger.info("Booking has been started for {}/ selected store id is {}", userEmployeeName, storeId);
+           addLog("Booking started for store " + storeId + ".");
 
             try {
+                
                 UserHeaderModel headers = user.getUserHeaders();
                 String role = user.getRole().toString();
                 String employeeId = headers.getEmployeeId();
@@ -143,21 +161,41 @@ public class BookingWorker implements Runnable {
                 String xDeviceId = headers.getXDeviceId();
                 String siteId = headers.getSiteId();
 
-                logger.debug("[BookingWorker - " + userId + "] Headers: " + headers.toString());
-
                 final String fetchCfBm = cfbm;
                 final String fetchRequestId = requestId;
-                FetchSlotsResponse response = blockWithTokenRefresh(
+
+
+                ResponseEntity<FetchSlotsResponse> response = blockWithTokenRefresh(
                         "fetch slots",
-                        () -> webClientServices.getSlotsDetails(
-                                fetchCfBm, fetchRequestId, jwtToken, request,
-                                siteId, employeeId, userAgent, xDeviceId,
-                                role, sessionToken, httpSessionToken));
-                logDebugToFile("[BookingWorker - " + userId + "] Raw API Response: " + response);
+                   () -> webClientServices.getSlotsDetails (
+                    fetchCfBm,
+                    fetchRequestId,
+                    jwtToken,
+                    request,
+                    siteId,
+                    employeeId,
+                    userAgent,
+                    xDeviceId,
+                    role,
+                    sessionToken,
+                    httpSessionToken));
+                                
+                logger.info("Slots fetched for {}. Selected store id is {}.", userEmployeeName, storeId);
+                addLog("Slot list fetched for store " + storeId + " on date " + dates.get(i) + ".");
+
+                FetchSlotsResponse responseBody = response != null ? response.getBody() : null;
+                if (responseBody == null || !responseBody.isSuccess()) {
+                    
+                    logger.error("{} slots fetch failed for selected store id {}. Error code: {}", 
+                            userEmployeeName, storeId, responseBody != null ? responseBody.getErrorCode() : "null");
+                    addLog("Unable to fetch slots for store " + storeId + ".");
+                    continue;
+                }
+               
 
                 // Returns slots in user's preferred time-window order (same as bot)
                 // Key = slot ID, Value = IST time key e.g. "06:00-08:00"
-                Map<String, String> slotIdToTime = filterSlotId(response, times);
+                Map<String, String> slotIdToTime = filterSlotId(responseBody, times);
                 List<String> slotIds = new ArrayList<>(slotIdToTime.keySet());
 
                 if (!slotIds.isEmpty()) {
@@ -168,73 +206,72 @@ public class BookingWorker implements Runnable {
 
                     final String bookCfBm = cfbm;
                     final String bookRequestId = requestId;
-                    GlobalRespons bookingResponse = blockWithTokenRefresh(
+                    ResponseEntity<GlobalRespons> bookingResponse = blockWithTokenRefresh(
                             "book slots",
                             () -> webClientServices.bookSlots(
-                                    bookCfBm, bookRequestId, jwtToken,
+                                    bookCfBm, bookRequestId,
+                                    jwtToken,
                                     BookSlotsRequest.builder().slotIds(slotIds).build(),
-                                    storeId, user, sessionToken, httpSessionToken, timesLog));
+                                    storeId,
+                                    user,
+                                    sessionToken,
+                                    httpSessionToken,
+                                    timesLog));
 
-                    if (bookingResponse.isSuccess()) {
-                        addInMemoryLog("SUCCESS! Booked slots " + slotIds + " on date " + dates.get(i));
+                    if (bookingResponse.getStatusCode().is2xxSuccessful() && bookingResponse.getBody() != null
+                            && bookingResponse.getBody().isSuccess()) {
+
+                        logger.info(" SUCCESS! Booked slots: {}/for user : {}/ store id: {}" + timesLog
+                                + " on date " + dates.get(i), slotIds.size(), userEmployeeName, storeId);
+                        addLog("Successfully booked " + slotIds.size() + " slot(s) for " + dates.get(i) + ".");
                         incrementBookedSlots(slotIds.size());
                         continue;
-                    } else {
-                        // Bulk booking failed — retry each slot individually (same as bot's one-by-one
-                        // fallback)
-                        for (int j = 0; j < slotIds.size(); j++) {
-                            String currentSlotId = slotIds.get(j);
-                            List<String> singleSlot = new ArrayList<>();
-                            singleSlot.add(currentSlotId);
-                            String singleTimeLog = "{" + currentSlotId + "=" + slotIdToTime.get(currentSlotId) + "}";
+                    } 
+                    
+                    
+                    else {
 
-                            cfbm = GenerateCookie.generateCfBmCookie();
-                            requestId = GenerateCookie.generateRequestId();
+                    int statusCode = bookingResponse.getStatusCode().value();
 
-                            final String retryCfBm = cfbm;
-                            final String retryRequestId = requestId;
-                            GlobalRespons bookingRetryResponse = blockWithTokenRefresh(
-                                    "book single slot",
-                                    () -> webClientServices.bookSlots(
-                                            retryCfBm, retryRequestId, jwtToken,
-                                            BookSlotsRequest.builder().slotIds(singleSlot).build(),
-                                            storeId, user, sessionToken, httpSessionToken, singleTimeLog));
-
-                            if (bookingRetryResponse.isSuccess()) {
-                                addInMemoryLog("SUCCESS on retry! Booked " + currentSlotId
-                                        + " on date " + dates.get(i));
-                                incrementBookedSlots(1);
-                            } else {
-                                logToFile("[BookingWorker - " + userId + "] FAILED to book slot " + currentSlotId
-                                        + " on date " + dates.get(i));
-                            }
-                        }
-                    }
+                      logger.error(
+            "{} failed to book slots for employee: {}, store id: {}, date: {}",
+                     statusCode,
+                     userEmployeeName,
+                     storeId,
+                     dates.get(i));           
+                    addLog("Booking failed for store " + storeId + " on date " + dates.get(i) + ".");
+                    
+                    continue;
+                    }   
 
                 }
 
             } catch (Throwable e) {
-                logToFile("[BookingWorker - " + userId + "] Slot fetch/booking failed: " + e.toString());
+                logger.error("[BookingWorker - " + userEmployeeName + "] Slot fetch/booking failed: {}", e.toString());
+                addLog("Slot fetching or booking failed for date " + dates.get(i) + ".");
             }
         }
     }
 
     private <T> T blockWithTokenRefresh(String operationName, Supplier<Mono<T>> apiCall) {
         try {
-            return apiCall.get().block();
+            return apiCall.get().block(API_TIMEOUT);
         } catch (WebClientResponseException e) {
             if (!isUnauthorizedOrForbidden(e)) {
                 throw e;
             }
 
-            logToFile("[BookingWorker - " + userId + "] " + operationName + " returned HTTP "
-                    + e.getStatusCode().value() + ". Refreshing JWT token.");
+            logger.error("[{}]] " + operationName + " returned HTTP "
+                    + e.getStatusCode().value() + ". Refreshing JWT token.", userEmployeeName);
+
+            addLog("Session expired while processing your booking. Refreshing the session.");
 
             if (!refreshJwtToken()) {
                 throw e;
             }
 
-            logToFile("[BookingWorker - " + userId + "] JWT token refreshed. Retrying " + operationName + ".");
+            logger.info("[BookingWorker - " + userEmployeeName + "] JWT token refreshed. Retrying " + operationName + ".");
+            addLog("Session refreshed. Retrying the request.");
             return apiCall.get().block();
         }
     }
@@ -246,98 +283,89 @@ public class BookingWorker implements Runnable {
 
     private boolean refreshJwtToken() {
         try {
+
             if (refreshToken == null || refreshToken.isBlank()) {
-                logToFile("[BookingWorker - " + userId + "] Cannot refresh JWT token: refresh token is missing.");
+                logger.error("Cannot refresh JWT token for user {}: refresh token is missing.", userEmployeeName);
+                addLog("Session refresh failed because the refresh token is missing.");
                 return false;
             }
 
             CognitoRefreshTokenRespons response = webClientServices.refreshToken(refreshToken);
+
             if (response == null || response.getAuthenticationResult() == null
                     || response.getAuthenticationResult().getIdToken() == null
                     || response.getAuthenticationResult().getIdToken().isBlank()) {
-                logToFile(
-                        "[BookingWorker - " + userId + "] Cannot refresh JWT token: Cognito response has no IdToken.");
+                logger.error("Cannot refresh JWT token for user {}: Cognito response has no IdToken.", userEmployeeName);
+                addLog("Session refresh failed.");
                 return false;
             }
 
             String freshToken = response.getAuthenticationResult().getIdToken();
             this.jwtToken = freshToken;
             user.setJwt(freshToken);
+            logger.info("JWT token refreshed for user {}.", userEmployeeName);
             if (user.getUserHeaders() != null) {
                 user.getUserHeaders().setAuthorization(freshToken);
             }
 
             return true;
         } catch (Throwable e) {
-            logToFile("[BookingWorker - " + userId + "] JWT refresh failed: " + e.toString());
+            logger.error("JWT refresh failed for user {}: {}", userEmployeeName, e.toString());
+            addLog("Session refresh failed.");
             return false;
         }
     }
 
-    /**
-     * Filters available slots from the API response, matching the exact logic of
-     * the bot:
-     *
-     * 1. Find the store whose ID matches the user's siteId in the response.
-     * 2. From that store's slots, keep only slots where:
-     * - is_booked == false
-     * - booking_eligibility.allowed == true
-     * 3. If times is ["all"] or null/empty → return ALL available slots.
-     * 4. Otherwise, match each slot's IST time key ("HH:MM-HH:MM") against the
-     * user's
-     * preferred time windows IN ORDER, collecting all matches.
-     *
-     * Returns LinkedHashMap so that insertion order (= preference order) is
-     * preserved.
-     * Key = slot ID (String), Value = IST time key (e.g. "06:00-08:00").
-     */
+   
     private Map<String, String> filterSlotId(FetchSlotsResponse response, List<String> times) {
         if (response == null || response.getData() == null || response.getData().getStores() == null) {
             return Collections.emptyMap();
         }
 
-        String userStoreId = user.getUserHeaders().getSiteId();
-        logDebugToFile("[BookingWorker] Filtering slots for storeId: " + userStoreId + " | time_filter: " + times);
+        String userStoreId = user.getUserHeaders() != null ? user.getUserHeaders().getSiteId() : null;
+        logger.debug("Filtering slots for store {}.", userStoreId);
+        addLog("Checking available slots for store " + userStoreId + ".");
 
         // ── Step 1: find the matching store ──────────────────────────────────────
         FetchSlotsResponse.Store matchedStore = null;
+        String storeName = null;
         for (FetchSlotsResponse.Store store : response.getData().getStores()) {
             if (userStoreId != null && userStoreId.equals(store.getId())) {
                 matchedStore = store;
+                storeName = store.getName();
                 break;
             }
         }
 
         if (matchedStore == null) {
-            logDebugToFile("[BookingWorker] Store " + userStoreId + " not found in API response.");
+            logger.debug("Currently no slots available for store " + storeName + "for user " + userEmployeeName);
+            addLog("No slots are currently available for store " + userStoreId + ".");
             return Collections.emptyMap();
         }
 
         if (matchedStore.getSlots() == null || matchedStore.getSlots().isEmpty()) {
-            logDebugToFile("[BookingWorker] Store " + userStoreId + " has no slots in response.");
+            logger.debug("Empty slots list for store " + storeName + " for user " + userEmployeeName);
+            addLog("No slots are currently available for store " + userStoreId + ".");
             return Collections.emptyMap();
         }
 
-        // ── Step 2: keep only available + eligible slots (same as bot's raw_slots
-        // filter) ──
+        // ── Step 2: keep only available + eligible slots 
         List<FetchSlotsResponse.Slot> availableSlots = new ArrayList<>();
+
         for (FetchSlotsResponse.Slot slot : matchedStore.getSlots()) {
             boolean isBooked = slot.isBooked();
             boolean allowed = slot.getBookingEligibility() != null && slot.getBookingEligibility().isAllowed();
             String timeKey = DateToUtc.slotTimeKey(slot.getStartTime(), slot.getEndTime());
             String label = DateToUtc.decodeTime(slot.getStartTime(), slot.getEndTime());
 
-            logDebugToFile("[BookingWorker] Slot ID=" + slot.getId()
-                    + " | timeKey=" + timeKey + " (" + label + ")"
-                    + " | isBooked=" + isBooked + " | allowed=" + allowed);
-
             if (!isBooked && allowed) {
-                availableSlots.add(slot);
+                availableSlots.add(slot); 
             }
         }
 
         if (availableSlots.isEmpty()) {
-            logDebugToFile("[BookingWorker] No available+eligible slots found for store " + userStoreId);
+            logger.debug("No available slots after filtering for store " + storeName + " for user " + userEmployeeName);
+            addLog("No available slots matched the booking requirements.");
             return Collections.emptyMap();
         }
 
@@ -346,12 +374,15 @@ public class BookingWorker implements Runnable {
                 || (times.size() == 1 && "all".equalsIgnoreCase(times.get(0))));
 
         if (acceptAll) {
+
             Map<String, String> all = new LinkedHashMap<>();
             for (FetchSlotsResponse.Slot slot : availableSlots) {
                 all.put(String.valueOf(slot.getId()),
                         DateToUtc.slotTimeKey(slot.getStartTime(), slot.getEndTime()));
             }
-            logDebugToFile("[BookingWorker] Mode=ALL -> returning " + all.size() + " available slots.");
+
+            logger.debug("[BookingWorker] Mode=ALL -> returning " + all.size() + " available slots.");
+            addLog(all.size() + " available slot(s) found.");
             return all;
         }
 
@@ -361,11 +392,11 @@ public class BookingWorker implements Runnable {
         Map<String, String> matchedSlots = new LinkedHashMap<>();
         for (String preferredKey : times) {
             for (FetchSlotsResponse.Slot slot : availableSlots) {
+
                 if (DateToUtc.isTimeMatch(preferredKey, slot.getStartTime(), slot.getEndTime())) {
                     String slotKey = DateToUtc.slotTimeKey(slot.getStartTime(), slot.getEndTime());
                     matchedSlots.put(String.valueOf(slot.getId()), slotKey);
-                    logDebugToFile("[BookingWorker] MATCHED slot " + slot.getId()
-                            + " for time window " + preferredKey);
+                    logger.info("A slot matched the preferred shift time {}.", preferredKey);
                 }
             }
         }
@@ -376,8 +407,9 @@ public class BookingWorker implements Runnable {
             for (FetchSlotsResponse.Slot slot : availableSlots) {
                 seenKeys.add(DateToUtc.slotTimeKey(slot.getStartTime(), slot.getEndTime()));
             }
-            logDebugToFile("[BookingWorker] No matching slots | Seen keys: " + seenKeys
-                    + " | Filter: " + times);
+                    logger.debug("No slots matched preferred time windows. Preferred keys: " + times
+                    + " | Seen keys: " + seenKeys);
+            addLog("No slots matched your preferred shift times.");
         }
 
         return matchedSlots;
@@ -390,17 +422,18 @@ public class BookingWorker implements Runnable {
             return new ArrayList<>(inMemoryUserLogs);
         }
     }
+    
 
-    private void addInMemoryLog(String message) {
+    private void addLog(String  log) {
         synchronized (inMemoryUserLogs) {
             if (inMemoryUserLogs.size() >= MAX_IN_MEMORY_LOGS_SIZE) {
-                inMemoryUserLogs.remove(0);
+                inMemoryUserLogs.remove(0); // Remove oldest log
             }
-            inMemoryUserLogs.add(Logs.builder()
-                    .logs(List.of(message))
-                    .build());
+            inMemoryUserLogs.add(Logs.builder().logs(List.of(log)).build());
         }
     }
+    
+    
 
     private void incrementBookedSlots(long count) {
         if (count <= 0) return;
@@ -413,27 +446,16 @@ public class BookingWorker implements Runnable {
             latestUser.setTotalBookedSlots(currentTotal + count);
             userRepo.save(latestUser);
         } catch (Exception e) {
-            logToFile("[BookingWorker - " + userId + "] Failed to save booked slot count: " + e.toString());
+            logger.error("Failed to save booked slot count: {}", e.toString());
+            addLog("Booked slot count could not be saved.");
         }
     }
 
-    private void saveBookedSlotsIfAny() {
-      
-        if (bookedSlotsInSession <= 0) {
-            return;
-        }
+   
+   
 
-        user.setTotalBookedSlots(user.getTotalBookedSlots() + bookedSlotsInSession);
-        userRepo.save(user);
-        bookedSlotsSaved = true;
-    }
-
-    private void logToFile(String message) {
-        fileLogger.info(message);
-    }
-
-    private void logDebugToFile(String message) {
-        fileLogger.debug(message);
+    private void logError(String message) {
+        logger.error(message);
     }
 
     public boolean removeOneDateFromList(String date) {
@@ -451,7 +473,9 @@ public class BookingWorker implements Runnable {
      @Override
     public void run() {
         try {
-            addInMemoryLog("Booking intilized for dates: " + dates);
+
+           logger.info("Booking has been initiated for : {}/ the seleted dates are : {}",userEmployeeName,dates);
+           addLog("Booking process initiated.");
 
             while (!this.isStop) {
 
@@ -464,7 +488,7 @@ public class BookingWorker implements Runnable {
                     continue;
                 }
 
-                logDebugToFile("[BookingWorker - " + userId + "] Preparing to fetch slots. Found dates: " + dates);
+                
 
                 if (dates == null || dates.isEmpty()) {
                     this.isStop = true;
@@ -481,14 +505,18 @@ public class BookingWorker implements Runnable {
                         Thread.sleep(5000);
                     }
                 } catch (InterruptedException e) {
+                    addLog("Booking process stopped.");
                     break;
                 } catch (Throwable t) {
-                    logToFile("[BookingWorker - " + userId + "] Worker stopped because of an error: " + t.toString());
+                    logError("[BookingWorker - " + userId + "] Worker stopped because of an error: " + t.toString());
+                    addLog("Booking process stopped because of an error.");
                     break;
                 }
             }
         } finally {
-            saveBookedSlotsIfAny();
+            logger.info("[BookingWorker - " + userId + "] Worker finished.");
+            addLog("Booking process finished.");
+           
         }
     }
 }

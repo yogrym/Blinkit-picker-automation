@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
@@ -161,11 +162,9 @@ public class WebClientServices {
                 return "+91" + digitsOnly;
         }
 
-        public Mono<FetchSlotsResponse> getSlotsDetails(String cfBm, String requestId, String jwt,
+        public Mono<ResponseEntity<FetchSlotsResponse>> getSlotsDetails(String cfBm, String requestId, String jwt,
                         FetchSlotsRequest fetchSlotsRequest, String siteId, String employeeId, String userAgent,
                         String xDeviceId, String role, String sessionToken, String httpSessionToken) {
-
-                System.out.println("[WebClient] Requesting getSlotsDetails with StoreID: " + siteId);
 
                 String authHeader = jwt != null && jwt.startsWith("Bearer ") ? jwt : "Bearer " + jwt;
 
@@ -186,23 +185,12 @@ public class WebClientServices {
                                 .header("site-id", siteId)
                                 .bodyValue(fetchSlotsRequest)
                                 .retrieve()
-                                .bodyToMono(FetchSlotsResponse.class)
-                                .doOnNext(res -> System.out
-                                                .println("[WebClient] getSlotsDetails SUCCESS response received"))
-                                .doOnError(WebClientResponseException.class, e -> {
-                                        System.out.println("[WebClient - ERROR] getSlotsDetails HTTP Status: "
-                                                        + e.getStatusCode());
-                                        System.out.println("[WebClient - ERROR] getSlotsDetails Response Body: "
-                                                        + e.getResponseBodyAsString());
-                                });
+                                .toEntity(FetchSlotsResponse.class);
         }
 
-        public Mono<GlobalRespons> bookSlots(String cfBm, String requestId, String jwt,
+        public Mono<ResponseEntity<GlobalRespons>> bookSlots(String cfBm, String requestId, String jwt,
                         BookSlotsRequest bookSlotsRequest, String storeId, UserModel user,
                         String sessionToken, String httpSessionToken, String timesLog) {
-
-                System.out.println("[WebClient] Requesting bookSlots for StoreID: " + storeId + " with slots: "
-                                + bookSlotsRequest.getSlotIds() + " at times: " + timesLog);
 
                 String authHeader = jwt != null && jwt.startsWith("Bearer ") ? jwt : "Bearer " + jwt;
                 String userAgent = user.getUserHeaders().getUserAgent();
@@ -224,16 +212,8 @@ public class WebClientServices {
                                 .header("site-id", storeId)
                                 .bodyValue(bookSlotsRequest)
                                 .retrieve()
-                                .bodyToMono(GlobalRespons.class)
-                                .doOnNext(res -> System.out.println("[WebClient] bookSlots SUCCESS response received"))
-                                .doOnError(WebClientResponseException.class, e -> {
-                                        System.out.println("[WebClient - ERROR] bookSlots HTTP Status: "
-                                                        + e.getStatusCode());
-                                        System.out.println("[WebClient - ERROR] bookSlots Response Body: "
-                                                        + e.getResponseBodyAsString());
-                                        System.out.println("[WebClient - ERROR] Failed to book slots: "
-                                                        + bookSlotsRequest.getSlotIds() + " at times: " + timesLog);
-                                });
+                                .toEntity(GlobalRespons.class);
+                                
         }
 
         public Mono<AvailableSlotsRespons> getAvailableSlots(String cfBm, String requestId, String httpSessionToken,

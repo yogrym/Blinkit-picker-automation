@@ -1,0 +1,71 @@
+name: Build and deploy
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  APP_NAME: blinkit-picker
+  REMOTE_DIR: /opt/blinkit-picker
+  SERVICE_NAME: blinkit-picker
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '26'
+          cache: maven
+
+      - name: Build application
+        run: ./mvnw -B clean package -DskipTests
+
+      - name: Copy artifact to server
+        uses: appleboy/scp-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT || 22 }}
+          source: target/BlinkitPicker-*.jar
+          target: /tmp/${{ env.APP_NAME }}-${{ github.sha }}
+          strip_components: 1
+
+      - name: Install and restart service
+        uses: appleboy/ssh-action@v1
+        env:
+          RELEASE_DIR: /tmp/${{ env.APP_NAME }}-${{ github.sha }}
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT || 22 }}
+          envs: RELEASE_DIR,REMOTE_DIR,APP_NAME,SERVICE_NAME
+          script: |
+            set -eu
+            JAR_PATH="$(find "$RELEASE_DIR" -maxdepth 1 -type f -name '*.jar' | head -n 1)"
+            test -n "$JAR_PATH"
+
+            sudo install -d -o blinkit -g blinkit "${REMOTE_DIR}"
+            sudo install -m 0644 "$JAR_PATH" "${REMOTE_DIR}/${APP_NAME}.jar"
+            sudo systemctl daemon-reload
+            sudo systemctl restart "${SERVICE_NAME}"
+            sudo systemctl is-active --quiet "${SERVICE_NAME}"
+
+            rm -rf "$RELEASE_DIR"
+        env:
+          REMOTE_DIR: ${{ env.REMOTE_DIR }}
+          APP_NAME: ${{ env.APP_NAME }}
+          SERVICE_NAME: ${{ env.SERVICE_NAME }}

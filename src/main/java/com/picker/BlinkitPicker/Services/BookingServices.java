@@ -16,6 +16,7 @@ import com.picker.BlinkitPicker.Model.UserModel;
 import com.picker.BlinkitPicker.Model.UserHeaderModel;
 import com.picker.BlinkitPicker.Repository.BookingTaskRepo;
 import com.picker.BlinkitPicker.Repository.UserRepo;
+import com.picker.BlinkitPicker.Services.Worker.BookingWorker;
 import com.picker.BlinkitPicker.Dto.Internal.ViewAvailaibleSlotsRequest;
 import com.picker.BlinkitPicker.Util.GenerateCookie;
 import com.picker.BlinkitPicker.Util.SessionIdGenerator;
@@ -108,17 +109,17 @@ public class BookingServices implements ApplicationRunner {
             if (worker != null) {
                 worker.stop();
                 userWorkers.removeWorker(sessionId);
-                bookingTaskRepo.findByUserIdAndSessionIdAndActiveTrue(userId, sessionId).ifPresent(task -> {
-                    task.setActive(false);
-                    bookingTaskRepo.save(task);
-                });
+
+                BookingTaskModel bookingTask = bookingTaskRepo.findByUserIdAndSessionIdAndActiveTrue(userId, sessionId).orElse(null);
+                if (bookingTask != null) {
+                   bookingTaskRepo.delete(bookingTask);
+                }
                 return "Stopped " + sessionId;
             }
-        }
-        if (markTaskInactive(userId, sessionId)) {
-            return "Stopped " + sessionId;
-        }
-        return "Session not found";
+        } 
+
+        return "OOPS! Session not found. It may have already been stopped or never existed.";
+        
     }
 
     public String pauseBooking(String token, String sessionId) {
@@ -268,7 +269,8 @@ public class BookingServices implements ApplicationRunner {
         executor.submit(worker);
     }
 
-    private boolean markTaskInactive(Long userId, String sessionId) {
+
+    /* private boolean markTaskInactive(Long userId, String sessionId) {
         return bookingTaskRepo.findByUserIdAndSessionIdAndActiveTrue(userId, sessionId)
                 .map(task -> {
                     task.setActive(false);
@@ -276,7 +278,8 @@ public class BookingServices implements ApplicationRunner {
                     return true;
                 })
                 .orElse(false);
-    }
+    } */
+   
 
     private boolean setTaskPaused(Long userId, String sessionId, boolean paused) {
         return bookingTaskRepo.findByUserIdAndSessionIdAndActiveTrue(userId, sessionId)
