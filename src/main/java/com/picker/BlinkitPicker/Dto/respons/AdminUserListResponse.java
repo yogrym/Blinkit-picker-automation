@@ -5,7 +5,6 @@ import java.util.List;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.picker.BlinkitPicker.Enums.RoleEnum;
-import com.picker.BlinkitPicker.Dto.WorkerList;
 import com.picker.BlinkitPicker.Dto.WorkerList.BookingData;
 
 import lombok.AllArgsConstructor;

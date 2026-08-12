@@ -1,6 +1,6 @@
 package com.picker.BlinkitPicker.Dto.request;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
+
 import com.picker.BlinkitPicker.Enums.RoleEnum;
 import jakarta.validation.constraints.NotBlank;
 import lombok.AllArgsConstructor;
