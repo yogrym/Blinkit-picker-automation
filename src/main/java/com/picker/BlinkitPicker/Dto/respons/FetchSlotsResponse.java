@@ -156,4 +156,9 @@ public class FetchSlotsResponse {
         @JsonProperty("place_name")
         private String placeName;
     }
+
+    public Object getErrorCode() {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'getErrorCode'");
+    }
 }
