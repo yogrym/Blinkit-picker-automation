@@ -23,6 +23,7 @@ import com.picker.BlinkitPicker.Enums.RoleEnum;
 import com.picker.BlinkitPicker.Model.UserHeaderModel;
 import com.picker.BlinkitPicker.Model.UserModel;
 import com.picker.BlinkitPicker.Repository.UserRepo;
+import com.picker.BlinkitPicker.Services.Worker.BookingWorker;
 import com.picker.BlinkitPicker.Util.ApiKeyGenerator;
 
 @Service
