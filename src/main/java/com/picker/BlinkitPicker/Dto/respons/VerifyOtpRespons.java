@@ -25,6 +25,8 @@ public class VerifyOtpRespons {
 
     @Data
     @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
     public static class User {
         @JsonProperty("date_now")
         private String dateNow;

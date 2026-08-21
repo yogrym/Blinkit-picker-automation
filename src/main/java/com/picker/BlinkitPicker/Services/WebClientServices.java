@@ -86,14 +86,13 @@ public class WebClientServices {
                                                 httpHeaders.set("x-lat", request.getLocation().getXLat().toString());
                                                 httpHeaders.set("x-long", request.getLocation().getXLong().toString());
                                                 httpHeaders.set("accept", "application/json");
-                                                httpHeaders.set("accept-encoding", "gzip, deflate, br");
-                                                httpHeaders.set("x-api-key", " b30153b3-a5f8-4118-9af9-43d05487c1b3");
+                                                httpHeaders.set("x-api-key", "b30153b3-a5f8-4118-9af9-43d05487c1b3");
                                                 httpHeaders.set("x-grace-trace-id", safe(headers.getGrTraceId()));
                                                 httpHeaders.set("requestid", safe(headers.getRequestId()));
                                                 httpHeaders.set("x-request-id", safe(headers.getRequestId()));
                                                 httpHeaders.set("cookie", safe(headers.getCookie()));
                                                 httpHeaders.set("x-app-locale", safe(headers.getAppLocale()));
-                                                httpHeaders.set("access_token"," ");
+                                                httpHeaders.set("access_token","");
                                                 httpHeaders.set("priority", safe(headers.getPriority()));
                                         })
                                         .body(BodyInserters.fromFormData(userData))
@@ -142,14 +141,13 @@ public class WebClientServices {
                                                 httpHeaders.set("x-lat", request.getXLat().toString());
                                                 httpHeaders.set("x-long", request.getXlong().toString());
                                                 httpHeaders.set("accept", "application/json");
-                                                httpHeaders.set("accept-encoding", "gzip, deflate, br");
-                                                httpHeaders.set("x-api-key", " b30153b3-a5f8-4118-9af9-43d05487c1b3");
+                                                httpHeaders.set("x-api-key", "b30153b3-a5f8-4118-9af9-43d05487c1b3");
                                                 httpHeaders.set("x-grace-trace-id", xTrace);
                                                 httpHeaders.set("requestid", xTrace);
                                                 httpHeaders.set("x-request-id", xTrace);
                                                 httpHeaders.set("cookie", GenerateCookie.generateCfBmCookie());
                                                 httpHeaders.set("x-app-locale", safe(headers.getAppLocale()));
-                                                httpHeaders.set("access_token"," ");
+                                                httpHeaders.set("access_token","");
                                                 httpHeaders.set("priority", safe(headers.getPriority()));
                                         })
                                         .body(BodyInserters.fromFormData(requestBodyData))
@@ -176,7 +174,7 @@ public class WebClientServices {
                         return webClient.post()
                                         .uri(appCahe.getApiUrl(ApiEnums.LOGIN))
                                          .headers(httpHeaders -> {
-                                                httpHeaders.set("Content-Type", "content-type: application/json; charset=UTF-8");
+                                                httpHeaders.set("Content-Type", "application/json; charset=UTF-8");
                                                 httpHeaders.set("x-device-manufacturer", headers.getDeviceManufacturer());
                                                 httpHeaders.set("x-app-version-code", headers.getAppVersionCode());
                                                 httpHeaders.set("x-supply-apps-kit-version", headers.getSupplyAppsKitVersion());
@@ -198,8 +196,7 @@ public class WebClientServices {
                                                 httpHeaders.set("x-lat", safe(headers.getXLat()));
                                                 httpHeaders.set("x-long", safe(headers.getXLong()));
                                                 httpHeaders.set("accept", "application/json");
-                                                httpHeaders.set("accept-encoding", "gzip, deflate, br");
-                                                httpHeaders.set("x-api-key", " b30153b3-a5f8-4118-9af9-43d05487c1b3");
+                                                httpHeaders.set("x-api-key", "b30153b3-a5f8-4118-9af9-43d05487c1b3");
                                                 httpHeaders.set("x-grace-trace-id", xTrace);
                                                 httpHeaders.set("requestid", xTrace);
                                                 httpHeaders.set("x-request-id", xTrace);
@@ -263,7 +260,7 @@ public class WebClientServices {
                 return blinkClient.post()
                                 .uri(appCahe.getApiUrl(ApiEnums.FETCH_SLOTS))
                                     .headers(httpHeaders -> {
-                                                httpHeaders.set("Content-Type", "content-type: application/json; charset=UTF-8");
+                                                httpHeaders.set("Content-Type", "application/json; charset=UTF-8");
                                                 httpHeaders.set("x-device-manufacturer", headers.getDeviceManufacturer());
                                                 httpHeaders.set("x-app-version-code", headers.getAppVersionCode());
                                                 httpHeaders.set("x-supply-apps-kit-version", headers.getSupplyAppsKitVersion());
@@ -285,8 +282,7 @@ public class WebClientServices {
                                                 httpHeaders.set("x-lat", safe(headers.getXLat()));
                                                 httpHeaders.set("x-long", safe(headers.getXLong()));
                                                 httpHeaders.set("accept", "application/json");
-                                                httpHeaders.set("accept-encoding", "gzip, deflate, br");
-                                                httpHeaders.set("x-api-key", " b30153b3-a5f8-4118-9af9-43d05487c1b3");
+                                                httpHeaders.set("x-api-key", "b30153b3-a5f8-4118-9af9-43d05487c1b3");
                                                 httpHeaders.set("x-grace-trace-id", xTrace);
                                                 httpHeaders.set("requestid", xTrace);
                                                 httpHeaders.set("x-request-id", xTrace);
@@ -309,7 +305,7 @@ public class WebClientServices {
                 return blinkClient.post()
                                 .uri(appCahe.getApiUrl(ApiEnums.BOOK_SLOT))
                                 .headers(httpHeaders -> {
-                                                httpHeaders.set("Content-Type", "content-type: application/json; charset=UTF-8");
+                                                httpHeaders.set("Content-Type", "application/json; charset=UTF-8");
                                                 httpHeaders.set("x-device-manufacturer", headers.getDeviceManufacturer());
                                                 httpHeaders.set("x-app-version-code", headers.getAppVersionCode());
                                                 httpHeaders.set("x-supply-apps-kit-version", headers.getSupplyAppsKitVersion());
@@ -331,8 +327,7 @@ public class WebClientServices {
                                                 httpHeaders.set("x-lat", safe(headers.getXLat()));
                                                 httpHeaders.set("x-long", safe(headers.getXLong()));
                                                 httpHeaders.set("accept", "application/json");
-                                                httpHeaders.set("accept-encoding", "gzip, deflate, br");
-                                                httpHeaders.set("x-api-key", " b30153b3-a5f8-4118-9af9-43d05487c1b3");
+                                                httpHeaders.set("x-api-key", "b30153b3-a5f8-4118-9af9-43d05487c1b3");
                                                 httpHeaders.set("x-grace-trace-id", xTrace);
                                                 httpHeaders.set("requestid", xTrace);
                                                 httpHeaders.set("x-request-id", xTrace);

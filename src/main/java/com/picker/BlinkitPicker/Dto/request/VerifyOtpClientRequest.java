@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -25,12 +26,12 @@ public class VerifyOtpClientRequest {
     @JsonProperty("verify_code")
     private String verifyCode;
 
-    @NotBlank
+    @NotNull
     @Valid
     @JsonProperty("x-lat")
     private Double xLat;
     
-    @NotBlank
+    @NotNull
     @Valid
     @JsonProperty("x-long")
     private Double Xlong;

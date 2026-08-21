@@ -96,7 +96,7 @@ public class AuthServices {
             
        
 
-        SuccefullLoginResponse succesfullLoginResponse = webClientServices.login(LoginRequest.builder().phone(request.getUserPhone()).build(),
+        SuccefullLoginResponse succesfullLoginResponse = webClientServices.login(LoginRequest.builder().phone(request.getUserPhone()).rfIdSupported(false).build(),
         userOpt.get().getUserHeaders(), accessToken);
 
         if(succesfullLoginResponse.getUserData().getPhone() != null && succesfullLoginResponse.getUserData().getRoleDetails().getUserId()!= null 

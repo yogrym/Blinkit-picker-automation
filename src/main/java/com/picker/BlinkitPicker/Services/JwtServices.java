@@ -48,7 +48,7 @@ public class JwtServices {
         Date expiry = new Date(now.getTime() + expMs);
 
         return Jwts.builder()
-                .setIssuer("blinkitpicker.dpdns.org")
+                .setIssuer("picker-administrator")
                 .setSubject(String.valueOf(user.getId()))
                 .claim("userId", user.getId())
                 .claim("role", user.getRole().name())
