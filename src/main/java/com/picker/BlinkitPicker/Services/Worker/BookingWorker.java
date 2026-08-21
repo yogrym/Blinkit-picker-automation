@@ -76,8 +76,16 @@ public class BookingWorker implements Runnable {
         this.webClientServices = webClientServices;
     }
 
+    public void saveUserHeaders() {
+        if (this.user != null && this.headers != null) {
+            this.user.setUserHeaders(this.headers);
+            this.userRepo.save(this.user);
+        }
+    }
+
     public Boolean pause() {
         this.isPaused = true;
+        saveUserHeaders();
         return true;
     }
 
@@ -88,6 +96,7 @@ public class BookingWorker implements Runnable {
 
     public Boolean stop() {
         this.isStop = true;
+        saveUserHeaders();
         return true;
     }
 
