@@ -10,27 +10,43 @@ import org.springframework.stereotype.Service;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
+import org.springframework.http.MediaType;
+import org.springframework.util.MultiValueMap;
+import org.springframework.web.reactive.function.BodyInserters;
 
+import com.picker.BlinkitPicker.Cache.AppCahe;
 import com.picker.BlinkitPicker.Dto.Internal.BookSlotsRequest;
 import com.picker.BlinkitPicker.Dto.Internal.ViewAvailaibleSlotsRequest;
 import com.picker.BlinkitPicker.Dto.request.CognitoRefreshTokenRequest;
 import com.picker.BlinkitPicker.Dto.request.FetchSlotsRequest;
+import com.picker.BlinkitPicker.Dto.request.LoginRequest;
 import com.picker.BlinkitPicker.Dto.request.OtpAuthRequest;
+import com.picker.BlinkitPicker.Dto.request.SendOtpRequest;
+import com.picker.BlinkitPicker.Dto.request.VerifyOtpClientRequest;
 import com.picker.BlinkitPicker.Dto.request.VerifyOtpRequest;
 import com.picker.BlinkitPicker.Dto.respons.CognitoRefreshTokenRespons;
 import com.picker.BlinkitPicker.Dto.respons.FetchSlotsResponse;
 import com.picker.BlinkitPicker.Dto.respons.GlobalRespons;
-import com.picker.BlinkitPicker.Dto.respons.OtpAuthRespons;
+import com.picker.BlinkitPicker.Dto.respons.SuccefullLoginResponse;
+import com.picker.BlinkitPicker.Dto.respons.SuccessfullOtpResponse;
 import com.picker.BlinkitPicker.Dto.respons.VerifyOtpRespons;
+import com.picker.BlinkitPicker.Enums.ApiEnums;
 import com.picker.BlinkitPicker.Exception.CognitoException;
 import com.picker.BlinkitPicker.Dto.respons.AvailableSlotsRespons;
+import com.picker.BlinkitPicker.Model.UserHeaderModel;
 import com.picker.BlinkitPicker.Model.UserModel;
 import com.picker.BlinkitPicker.Util.ContextDataUtil;
+import com.picker.BlinkitPicker.Util.GenerateCookie;
+
 import org.springframework.web.reactive.function.client.WebClientRequestException;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 @Service
 public class WebClientServices {
+
+
+        @Autowired
+        private AppCahe appCahe;
         @Autowired
         @Qualifier("cognitoWebClient")
         private WebClient webClient;
@@ -39,51 +55,50 @@ public class WebClientServices {
         @Qualifier("blinkitWebClient")
         private WebClient blinkClient;
 
-        @Value("${cognito.clientId}")
-        private String clientId;
+    
 
-        @Value("${list.slots.url}")
-        private String listSlotsUrl;
-
-        @Value("${available.dates.url}")
-        private String availableSlotsUrl;
-
-        @Value("${book.slot.url}")
-        private String bookSlotsUrl;
-
-        @Value("${cognito.poolId}")
-        private String poolId;
-
-        @Value("${cognito.url}")
-        private String uri;
-
-        public OtpAuthRespons sendOtpToUser(String phoneNumber) {
-                String cognitoPhoneNumber = toIndianE164PhoneNumber(phoneNumber);
-
-                OtpAuthRequest authBody = OtpAuthRequest.builder()
-                                .authFlow("CUSTOM_AUTH")
-                                .clientId(clientId)
-                                .authParameters(OtpAuthRequest.AuthParameters.builder()
-                                                .username(cognitoPhoneNumber)
-                                                .build())
-                                .clientMetadata(Map.of())
-                                .userContextData(OtpAuthRequest.UserContextData.builder()
-                                                .encodedData(ContextDataUtil.buildEncodedData(
-                                                                clientId,
-                                                                poolId,
-                                                                cognitoPhoneNumber))
-                                                .build())
-                                .build();
+        public SuccessfullOtpResponse sendOtpToUser(MultiValueMap<String, String> userData, UserHeaderModel headers,SendOtpRequest request) {
+              
 
                 try {
                         return webClient.post()
-                                        .uri(this.uri)
-                                        .header("Content-Type", "application/x-amz-json-1.1")
-                                        .header("x-amz-target", "AWSCognitoIdentityProviderService.InitiateAuth")
-                                        .header("amz-sdk-invocation-id", UUID.randomUUID().toString())
-                                        .bodyValue(authBody)
+                                        .uri(appCahe.getApiUrl(ApiEnums.SEND_OTP))
+                                        .headers(httpHeaders -> {
+                                                httpHeaders.set("Content-Type", "application/x-www-form-urlencoded");
+                                                httpHeaders.set("x-device-manufacturer", headers.getDeviceManufacturer());
+                                                httpHeaders.set("x-app-version-code", headers.getAppVersionCode());
+                                                httpHeaders.set("x-supply-apps-kit-version", headers.getSupplyAppsKitVersion());
+                                                httpHeaders.set("version_name", headers.getVersionName());
+                                                httpHeaders.set("app_client", headers.getAppClient());
+                                                httpHeaders.set("x-device-id", headers.getXDeviceId());
+                                                httpHeaders.set("version_code", headers.getVersionCode());
+                                                httpHeaders.set("app_client", headers.getAppClient());
+                                                httpHeaders.set("x-client-name", headers.getClientName());
+                                                httpHeaders.set("model", headers.getModel());
+                                                httpHeaders.set("x-device-hardware-type", headers.getDeviceHardwareType());
+                                                httpHeaders.set("x-app-version", headers.getAppVersion());
+                                                httpHeaders.set("version", headers.getVersion());
+                                                httpHeaders.set("x-app-theme", headers.getAppTheme());
+                                                httpHeaders.set("x-app-appearance", headers.getAppAppearance());
+                                                httpHeaders.set("user-agent", safe(headers.getUserAgent()));
+                                                httpHeaders.set("x-system-appearance", safe(headers.getAppAppearance()));
+                                                httpHeaders.set("x-system-theme", safe(headers.getAppTheme()));
+                                                httpHeaders.set("x-lat", request.getLocation().getXLat().toString());
+                                                httpHeaders.set("x-long", request.getLocation().getXLong().toString());
+                                                httpHeaders.set("accept", "application/json");
+                                                httpHeaders.set("accept-encoding", "gzip, deflate, br");
+                                                httpHeaders.set("x-api-key", " b30153b3-a5f8-4118-9af9-43d05487c1b3");
+                                                httpHeaders.set("x-grace-trace-id", safe(headers.getGrTraceId()));
+                                                httpHeaders.set("requestid", safe(headers.getRequestId()));
+                                                httpHeaders.set("x-request-id", safe(headers.getRequestId()));
+                                                httpHeaders.set("cookie", safe(headers.getCookie()));
+                                                httpHeaders.set("x-app-locale", safe(headers.getAppLocale()));
+                                                httpHeaders.set("access_token"," ");
+                                                httpHeaders.set("priority", safe(headers.getPriority()));
+                                        })
+                                        .body(BodyInserters.fromFormData(userData))
                                         .retrieve()
-                                        .bodyToMono(OtpAuthRespons.class)
+                                        .bodyToMono(SuccessfullOtpResponse.class)
                                         .block();
                 } catch (WebClientResponseException e) {
                         throw new CognitoException(e.getStatusCode().value(), e.getResponseBodyAsString());
@@ -92,35 +107,52 @@ public class WebClientServices {
                 }
         }
 
-        public VerifyOtpRespons verifyOtp(String usernameUid, String answerAsOtp, String sessionString,
-                        String phoneNumber) {
-                String cognitoPhoneNumber = toIndianE164PhoneNumber(phoneNumber);
+        private String safe(String value) {
+                return value == null ? "" : value;
+        }
+
+        public VerifyOtpRespons verifyOtp(MultiValueMap<String,String> requestBodyData, UserHeaderModel headers,VerifyOtpClientRequest request) {
+               
+                String xTrace = GenerateCookie.generateRequestId(); // for all kind of the requestid we will use it
+
 
                 try {
                         return webClient.post()
-                                        .uri(this.uri)
-                                        .header("Content-Type", "application/x-amz-json-1.1")
-                                        .header("x-amz-target",
-                                                        "AWSCognitoIdentityProviderService.RespondToAuthChallenge")
-                                        .header("amz-sdk-invocation-id", UUID.randomUUID().toString())
-                                        .bodyValue(VerifyOtpRequest.builder()
-                                                        .challengeName("CUSTOM_CHALLENGE")
-                                                        .clientId(clientId)
-                                                        .challengeResponses(
-                                                                        VerifyOtpRequest.ChallengeResponses.builder()
-                                                                                        .username(usernameUid)
-                                                                                        .answer(answerAsOtp)
-                                                                                        .phoneNumber(cognitoPhoneNumber)
-                                                                                        .build())
-                                                        .clientMetadata(Map.of())
-                                                        .userContextData(VerifyOtpRequest.UserContextData.builder()
-                                                                        .encodedData(ContextDataUtil.buildEncodedData(
-                                                                                        clientId,
-                                                                                        poolId,
-                                                                                        usernameUid))
-                                                                        .build())
-                                                        .session(sessionString)
-                                                        .build())
+                                        .uri(appCahe.getApiUrl(ApiEnums.VERIFY_OTP))
+                                         .headers(httpHeaders -> {
+                                                httpHeaders.set("Content-Type", "application/x-www-form-urlencoded");
+                                                httpHeaders.set("x-device-manufacturer", headers.getDeviceManufacturer());
+                                                httpHeaders.set("x-app-version-code", headers.getAppVersionCode());
+                                                httpHeaders.set("x-supply-apps-kit-version", headers.getSupplyAppsKitVersion());
+                                                httpHeaders.set("version_name", headers.getVersionName());
+                                                httpHeaders.set("app_client", headers.getAppClient());
+                                                httpHeaders.set("x-device-id", headers.getXDeviceId());
+                                                httpHeaders.set("version_code", headers.getVersionCode());
+                                                httpHeaders.set("app_client", headers.getAppClient());
+                                                httpHeaders.set("x-client-name", headers.getClientName());
+                                                httpHeaders.set("model", headers.getModel());
+                                                httpHeaders.set("x-device-hardware-type", headers.getDeviceHardwareType());
+                                                httpHeaders.set("x-app-version", headers.getAppVersion());
+                                                httpHeaders.set("version", headers.getVersion());
+                                                httpHeaders.set("x-app-theme", headers.getAppTheme());
+                                                httpHeaders.set("x-app-appearance", headers.getAppAppearance());
+                                                httpHeaders.set("user-agent", safe(headers.getUserAgent()));
+                                                httpHeaders.set("x-system-appearance", safe(headers.getAppAppearance()));
+                                                httpHeaders.set("x-system-theme", safe(headers.getAppTheme()));
+                                                httpHeaders.set("x-lat", request.getXLat().toString());
+                                                httpHeaders.set("x-long", request.getXlong().toString());
+                                                httpHeaders.set("accept", "application/json");
+                                                httpHeaders.set("accept-encoding", "gzip, deflate, br");
+                                                httpHeaders.set("x-api-key", " b30153b3-a5f8-4118-9af9-43d05487c1b3");
+                                                httpHeaders.set("x-grace-trace-id", xTrace);
+                                                httpHeaders.set("requestid", xTrace);
+                                                httpHeaders.set("x-request-id", xTrace);
+                                                httpHeaders.set("cookie", GenerateCookie.generateCfBmCookie());
+                                                httpHeaders.set("x-app-locale", safe(headers.getAppLocale()));
+                                                httpHeaders.set("access_token"," ");
+                                                httpHeaders.set("priority", safe(headers.getPriority()));
+                                        })
+                                        .body(BodyInserters.fromFormData(requestBodyData))
                                         .retrieve()
                                         .bodyToMono(VerifyOtpRespons.class)
                                         .block();
@@ -131,23 +163,82 @@ public class WebClientServices {
                 }
         }
 
-        public CognitoRefreshTokenRespons refreshToken(String refreshToken) {
+        
+
+
+         public SuccefullLoginResponse login(LoginRequest request, UserHeaderModel headers,String accessToken) {
+               
+                String xTrace = GenerateCookie.generateRequestId();// for all kind of the requestid we will use it
+
+                String sessionToken = GenerateCookie.generateSessionToken(); 
+
+                try {
+                        return webClient.post()
+                                        .uri(appCahe.getApiUrl(ApiEnums.LOGIN))
+                                         .headers(httpHeaders -> {
+                                                httpHeaders.set("Content-Type", "content-type: application/json; charset=UTF-8");
+                                                httpHeaders.set("x-device-manufacturer", headers.getDeviceManufacturer());
+                                                httpHeaders.set("x-app-version-code", headers.getAppVersionCode());
+                                                httpHeaders.set("x-supply-apps-kit-version", headers.getSupplyAppsKitVersion());
+                                                httpHeaders.set("version_name", headers.getVersionName());
+                                                httpHeaders.set("app_client", headers.getAppClient());
+                                                httpHeaders.set("x-device-id", headers.getXDeviceId());
+                                                httpHeaders.set("version_code", headers.getVersionCode());
+                                                httpHeaders.set("app_client", headers.getAppClient());
+                                                httpHeaders.set("x-client-name", headers.getClientName());
+                                                httpHeaders.set("model", headers.getModel());
+                                                httpHeaders.set("x-device-hardware-type", headers.getDeviceHardwareType());
+                                                httpHeaders.set("x-app-version", headers.getAppVersion());
+                                                httpHeaders.set("version", headers.getVersion());
+                                                httpHeaders.set("x-app-theme", headers.getAppTheme());
+                                                httpHeaders.set("x-app-appearance", headers.getAppAppearance());
+                                                httpHeaders.set("user-agent", safe(headers.getUserAgent()));
+                                                httpHeaders.set("x-system-appearance", safe(headers.getAppAppearance()));
+                                                httpHeaders.set("x-system-theme", safe(headers.getAppTheme()));
+                                                httpHeaders.set("x-lat", safe(headers.getXLat()));
+                                                httpHeaders.set("x-long", safe(headers.getXLong()));
+                                                httpHeaders.set("accept", "application/json");
+                                                httpHeaders.set("accept-encoding", "gzip, deflate, br");
+                                                httpHeaders.set("x-api-key", " b30153b3-a5f8-4118-9af9-43d05487c1b3");
+                                                httpHeaders.set("x-grace-trace-id", xTrace);
+                                                httpHeaders.set("requestid", xTrace);
+                                                httpHeaders.set("x-request-id", xTrace);
+                                                httpHeaders.set("session-token",sessionToken);
+                                                httpHeaders.set("cookie", GenerateCookie.generateCfBmCookie());
+                                                httpHeaders.set("x-app-locale", safe(headers.getAppLocale()));
+                                                httpHeaders.set("access_token", accessToken);
+                                                httpHeaders.set("priority", safe(headers.getPriority()));
+                                        })
+                                        .bodyValue(request)
+                                        .retrieve()
+                                        .bodyToMono(SuccefullLoginResponse.class)
+                                        .block();
+                } catch (WebClientResponseException e) {
+                        throw new CognitoException(e.getStatusCode().value(), e.getResponseBodyAsString());
+                } catch (WebClientRequestException e) {
+                        throw new CognitoException(503, "Unable to connect to your storeops" + e.getMessage());
+                }
+        }
+
+
+      public CognitoRefreshTokenRespons refreshToken(MultiValueMap<String,String> formData , UserHeaderModel headers) {
                 return webClient.post()
-                                .uri(this.uri)
-                                .header("Content-Type", "application/x-amz-json-1.1")
-                                .header("x-amz-target", "AWSCognitoIdentityProviderService.InitiateAuth")
-                                .header("amz-sdk-invocation-id", UUID.randomUUID().toString())
-                                .bodyValue(CognitoRefreshTokenRequest.builder()
-                                                .authFlow("REFRESH_TOKEN_AUTH")
-                                                .clientId(clientId)
-                                                .authParameters(CognitoRefreshTokenRequest.AuthParameters.builder()
-                                                                .refreshToken(refreshToken)
-                                                                .build())
-                                                .build())
+                                .uri(appCahe.getApiUrl(ApiEnums.ROATATE_TOKEN))
+                                .header("Content-Type", "application/x-www-form-urlencoded")
+                                .header("x-app-version-code", headers.getAppVersionCode())
+                                .header("x-app-version", headers.getAppVersion())
+                                .header("x-client-name", headers.getClientName())
+                                .header("x-device-id", headers.getXDeviceId())
+                                .header("x-device-manufacturer", headers.getDeviceManufacturer())
+                                .header("x-supply-apps-kit-version", headers.getSupplyAppsKitVersion())
+                                .header("x-device-hardware-type", headers.getDeviceHardwareType())
+                                .header("session-token",headers.getUserSessionToken())
+                                .header("http_session_token", headers.getUserHttpSessionToken())
+                                .body(BodyInserters.fromFormData(formData))
                                 .retrieve()
                                 .bodyToMono(CognitoRefreshTokenRespons.class)
                                 .block();
-        }
+        } 
 
         private String toIndianE164PhoneNumber(String phoneNumber) {
                 if (phoneNumber == null || phoneNumber.isBlank()) {
@@ -162,55 +253,96 @@ public class WebClientServices {
                 return "+91" + digitsOnly;
         }
 
-        public Mono<ResponseEntity<FetchSlotsResponse>> getSlotsDetails(String cfBm, String requestId, String jwt,
-                        FetchSlotsRequest fetchSlotsRequest, String siteId, String employeeId, String userAgent,
-                        String xDeviceId, String role, String sessionToken, String httpSessionToken) {
+        public Mono<ResponseEntity<FetchSlotsResponse>> getSlotsDetails(UserHeaderModel headers,
+                        FetchSlotsRequest fetchSlotsRequest) {
 
-                String authHeader = jwt != null && jwt.startsWith("Bearer ") ? jwt : "Bearer " + jwt;
+                String xTrace = GenerateCookie.generateRequestId(); // for all kind of the requestid we will use it
+
+                
 
                 return blinkClient.post()
-                                .uri(listSlotsUrl)
-                                .header("requestid", requestId)
-                                .header("cookie", "__cf_bm=" + cfBm)
-                                .header("authorization", authHeader)
-                                .header("user-agent", userAgent != null ? userAgent
-                                                : "com.blinkitstoreops/156301 (Linux; Android 10; CPH1819)")
-                                .header("x-device-id", xDeviceId)
-                                .header("x-role", role)
-                                .header("x-employeeid", employeeId)
-                                .header("x-lat", String.valueOf(fetchSlotsRequest.getLocationInfo().getXLat()))
-                                .header("x-long", String.valueOf(fetchSlotsRequest.getLocationInfo().getXLong()))
-                                .header("http_session_token", httpSessionToken)
-                                .header("session-token", sessionToken)
-                                .header("site-id", siteId)
+                                .uri(appCahe.getApiUrl(ApiEnums.FETCH_SLOTS))
+                                    .headers(httpHeaders -> {
+                                                httpHeaders.set("Content-Type", "content-type: application/json; charset=UTF-8");
+                                                httpHeaders.set("x-device-manufacturer", headers.getDeviceManufacturer());
+                                                httpHeaders.set("x-app-version-code", headers.getAppVersionCode());
+                                                httpHeaders.set("x-supply-apps-kit-version", headers.getSupplyAppsKitVersion());
+                                                httpHeaders.set("version_name", headers.getVersionName());
+                                                httpHeaders.set("app_client", headers.getAppClient());
+                                                httpHeaders.set("x-device-id", headers.getXDeviceId());
+                                                httpHeaders.set("version_code", headers.getVersionCode());
+                                                httpHeaders.set("app_client", headers.getAppClient());
+                                                httpHeaders.set("x-client-name", headers.getClientName());
+                                                httpHeaders.set("model", headers.getModel());
+                                                httpHeaders.set("x-device-hardware-type", headers.getDeviceHardwareType());
+                                                httpHeaders.set("x-app-version", headers.getAppVersion());
+                                                httpHeaders.set("version", headers.getVersion());
+                                                httpHeaders.set("x-app-theme", headers.getAppTheme());
+                                                httpHeaders.set("x-app-appearance", headers.getAppAppearance());
+                                                httpHeaders.set("user-agent", safe(headers.getUserAgent()));
+                                                httpHeaders.set("x-system-appearance", safe(headers.getAppAppearance()));
+                                                httpHeaders.set("x-system-theme", safe(headers.getAppTheme()));
+                                                httpHeaders.set("x-lat", safe(headers.getXLat()));
+                                                httpHeaders.set("x-long", safe(headers.getXLong()));
+                                                httpHeaders.set("accept", "application/json");
+                                                httpHeaders.set("accept-encoding", "gzip, deflate, br");
+                                                httpHeaders.set("x-api-key", " b30153b3-a5f8-4118-9af9-43d05487c1b3");
+                                                httpHeaders.set("x-grace-trace-id", xTrace);
+                                                httpHeaders.set("requestid", xTrace);
+                                                httpHeaders.set("x-request-id", xTrace);
+                                                httpHeaders.set("session-token", GenerateCookie.generateSessionToken());
+                                                httpHeaders.set("cookie", GenerateCookie.generateCfBmCookie());
+                                                httpHeaders.set("x-app-locale", safe(headers.getAppLocale()));
+                                                httpHeaders.set("access_token", headers.getAccessToken());
+                                                httpHeaders.set("priority", safe(headers.getPriority()));
+                                        })
                                 .bodyValue(fetchSlotsRequest)
                                 .retrieve()
                                 .toEntity(FetchSlotsResponse.class);
         }
 
-        public Mono<ResponseEntity<GlobalRespons>> bookSlots(String cfBm, String requestId, String jwt,
-                        BookSlotsRequest bookSlotsRequest, String storeId, UserModel user,
-                        String sessionToken, String httpSessionToken, String timesLog) {
+        public Mono<ResponseEntity<GlobalRespons>> bookSlots(UserHeaderModel headers,
+                        BookSlotsRequest request,String timesLog) {
 
-                String authHeader = jwt != null && jwt.startsWith("Bearer ") ? jwt : "Bearer " + jwt;
-                String userAgent = user.getUserHeaders().getUserAgent();
+                String xTrace = GenerateCookie.generateRequestId();
 
                 return blinkClient.post()
-                                .uri(bookSlotsUrl)
-                                .header("requestid", requestId)
-                                .header("cookie", "__cf_bm=" + cfBm)
-                                .header("authorization", authHeader)
-                                .header("user-agent", userAgent != null ? userAgent
-                                                : "com.blinkitstoreops/156301 (Linux; Android 10; CPH1819)")
-                                .header("x-device-id", user.getUserHeaders().getXDeviceId())
-                                .header("x-role", user.getRole() != null ? user.getRole().toString() : "PICKER")
-                                .header("x-employeeid", user.getUserHeaders().getEmployeeId())
-                                .header("x-lat", user.getUserHeaders().getXLat())
-                                .header("x-long", user.getUserHeaders().getXLong())
-                                .header("http_session_token", httpSessionToken)
-                                .header("session-token", sessionToken)
-                                .header("site-id", storeId)
-                                .bodyValue(bookSlotsRequest)
+                                .uri(appCahe.getApiUrl(ApiEnums.BOOK_SLOT))
+                                .headers(httpHeaders -> {
+                                                httpHeaders.set("Content-Type", "content-type: application/json; charset=UTF-8");
+                                                httpHeaders.set("x-device-manufacturer", headers.getDeviceManufacturer());
+                                                httpHeaders.set("x-app-version-code", headers.getAppVersionCode());
+                                                httpHeaders.set("x-supply-apps-kit-version", headers.getSupplyAppsKitVersion());
+                                                httpHeaders.set("version_name", headers.getVersionName());
+                                                httpHeaders.set("app_client", headers.getAppClient());
+                                                httpHeaders.set("x-device-id", headers.getXDeviceId());
+                                                httpHeaders.set("version_code", headers.getVersionCode());
+                                                httpHeaders.set("app_client", headers.getAppClient());
+                                                httpHeaders.set("x-client-name", headers.getClientName());
+                                                httpHeaders.set("model", headers.getModel());
+                                                httpHeaders.set("x-device-hardware-type", headers.getDeviceHardwareType());
+                                                httpHeaders.set("x-app-version", headers.getAppVersion());
+                                                httpHeaders.set("version", headers.getVersion());
+                                                httpHeaders.set("x-app-theme", headers.getAppTheme());
+                                                httpHeaders.set("x-app-appearance", headers.getAppAppearance());
+                                                httpHeaders.set("user-agent", safe(headers.getUserAgent()));
+                                                httpHeaders.set("x-system-appearance", safe(headers.getAppAppearance()));
+                                                httpHeaders.set("x-system-theme", safe(headers.getAppTheme()));
+                                                httpHeaders.set("x-lat", safe(headers.getXLat()));
+                                                httpHeaders.set("x-long", safe(headers.getXLong()));
+                                                httpHeaders.set("accept", "application/json");
+                                                httpHeaders.set("accept-encoding", "gzip, deflate, br");
+                                                httpHeaders.set("x-api-key", " b30153b3-a5f8-4118-9af9-43d05487c1b3");
+                                                httpHeaders.set("x-grace-trace-id", xTrace);
+                                                httpHeaders.set("requestid", xTrace);
+                                                httpHeaders.set("x-request-id", xTrace);
+                                                httpHeaders.set("session-token", GenerateCookie.generateSessionToken());
+                                                httpHeaders.set("cookie", GenerateCookie.generateCfBmCookie());
+                                                httpHeaders.set("x-app-locale", safe(headers.getAppLocale()));
+                                                httpHeaders.set("access_token", headers.getAccessToken());
+                                                httpHeaders.set("priority", safe(headers.getPriority()));
+                                        })
+                                .bodyValue(request)
                                 .retrieve()
                                 .toEntity(GlobalRespons.class);
                                 
@@ -223,7 +355,7 @@ public class WebClientServices {
                 String authHeader = jwt != null && jwt.startsWith("Bearer ") ? jwt : "Bearer " + jwt;
 
                 return blinkClient.post()
-                                .uri(availableSlotsUrl)
+                                .uri(appCahe.getApiUrl(ApiEnums.FETCH_SLOTS))
                                 .header("requestid", requestId)
                                 .header("cookie", "__cf_bm=" + cfBm)
                                 .header("authorization", authHeader)

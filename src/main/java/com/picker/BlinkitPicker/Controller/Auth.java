@@ -8,7 +8,7 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.picker.BlinkitPicker.Dto.request.LoginRequest;
+import com.picker.BlinkitPicker.Dto.request.SendOtpRequest;
 import com.picker.BlinkitPicker.Dto.request.RefreshTokenRequest;
 import com.picker.BlinkitPicker.Dto.request.VerifyOtpClientRequest;
 import com.picker.BlinkitPicker.Services.AuthServices;
@@ -21,22 +21,21 @@ public class Auth {
     @Autowired
     private AuthServices authService;
 
-    @PostMapping("/login")
-    public ResponseEntity<?> sendOtp(@Valid @RequestBody LoginRequest loginRequest) {
-        return ResponseEntity.ok(authService.loginWithOtp(loginRequest));
+    @PostMapping("/send_otp")
+    public ResponseEntity<?> sendOtp(@Valid @RequestBody SendOtpRequest request) {
+        return ResponseEntity.ok(authService.sendOtp(request));
     }
 
     @PostMapping("/verify")
     public ResponseEntity<?> verifyOtp(@Valid @RequestBody VerifyOtpClientRequest verifyOtpClientRequest) {
-        return ResponseEntity.ok(authService.verifyLogin(verifyOtpClientRequest));
+        return ResponseEntity.ok(authService.verifyOtp(verifyOtpClientRequest));
     }
 
     @PostMapping("/refresh")
     public ResponseEntity<?> refresh(@Valid @RequestBody RefreshTokenRequest refreshTokenRequest) {
         return authService.refreshAccessToken(refreshTokenRequest);
     }
-
-    @PostMapping("/internal-token")
+    /* @PostMapping("/internal-token")
     public ResponseEntity<?> internalToken(@RequestHeader("Authorization") String token) {
 
         Boolean isRefreshed = authService.generateInternalToken(token);
@@ -46,5 +45,6 @@ public class Auth {
         }
 
         return ResponseEntity.ok("success");
-    }
+    } */
+   
 }

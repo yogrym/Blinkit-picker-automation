@@ -70,7 +70,7 @@ public class AdminUserListResponse {
         private Long totalBookedSlots;
 
         @JsonProperty("user_id")
-        private String userId;
+        private Long userId;
 
         @JsonProperty("api_key")
         private String apiKey;

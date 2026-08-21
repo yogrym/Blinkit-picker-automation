@@ -1,28 +1,25 @@
 package com.picker.BlinkitPicker.Services;
 
-import java.nio.charset.StandardCharsets;
-import java.util.Base64;
 import java.util.Optional;
-import java.util.UUID;
-
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
 
+import com.picker.BlinkitPicker.Dto.request.SendOtpRequest;
 import com.picker.BlinkitPicker.Dto.request.LoginRequest;
 import com.picker.BlinkitPicker.Dto.request.RefreshTokenRequest;
 import com.picker.BlinkitPicker.Dto.request.SignupRequest;
 import com.picker.BlinkitPicker.Dto.request.VerifyOtpClientRequest;
-import com.picker.BlinkitPicker.Dto.respons.CognitoRefreshTokenRespons;
 import com.picker.BlinkitPicker.Dto.respons.LoginRespons;
-import com.picker.BlinkitPicker.Dto.respons.OtpAuthRespons;
-import com.picker.BlinkitPicker.Dto.respons.OtpValidRespons;
+import com.picker.BlinkitPicker.Dto.respons.SuccefullLoginResponse;
+import com.picker.BlinkitPicker.Dto.respons.SuccessfullOtpResponse;
 import com.picker.BlinkitPicker.Dto.respons.VerifyOtpRespons;
 import com.picker.BlinkitPicker.Model.UserModel;
 import com.picker.BlinkitPicker.Model.UserHeaderModel;
 import com.picker.BlinkitPicker.Repository.UserRepo;
 import com.picker.BlinkitPicker.Util.ApiKeyGenerator;
 
-import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 @Service
@@ -44,94 +41,104 @@ public class AuthServices {
         this.webClientServices = webClientServices;
     }
 
-    public ResponseEntity<?> loginWithOtp(LoginRequest loginRequest) {
+    public ResponseEntity<?> sendOtp(SendOtpRequest request) {
 
-        Optional<UserModel> userOpt = userRepo.findByPhone(loginRequest.getPhoneNumber());
+        Optional<UserModel> userOpt = userRepo.findByPhone(request.getUserPhone());
 
          if (userOpt.isEmpty()) {
 
             SignupRequest signupRequest = SignupRequest.builder()
-                    .phone(loginRequest.getPhoneNumber())
+                    .phone(request.getUserPhone())
                     .plan("weekly")
                     .build();
 
            adminServices.addFreeUser(signupRequest);
-           userOpt = userRepo.findByPhone(loginRequest.getPhoneNumber());
+           userOpt = userRepo.findByPhone(request.getUserPhone());
         }
     
-       
+        MultiValueMap<String, String> formData = new LinkedMultiValueMap<>();
+        formData.add("user_phone", request.getUserPhone());
+        formData.add("country_code",request.getCountryCode() != null ? request.getCountryCode() : "91");
 
-        OtpAuthRespons respons = webClientServices.sendOtpToUser(userOpt.get().getPhone());
-        if (respons.getChallengeName() == null) {
-            return ResponseEntity.status(500).body("Something went wrong while sending OTP.");
+        SuccessfullOtpResponse response = webClientServices.sendOtpToUser(formData, userOpt.get().getUserHeaders(),request);
+        if (!response.isSuccess() && !response.isLogin()) {
+            return ResponseEntity.status(500).body("Could not send OTP. Please try again later.");
         }
 
-        return ResponseEntity.status(200).body(OtpValidRespons.builder()
-                .username(respons.getChallengeParameters().getUsername())
-                .session(respons.getSession())
-                .userId(userOpt.get().getId().toString())
-                .build());
+        return ResponseEntity.status(200).body(response);
 
     }
 
-    public ResponseEntity<?> verifyLogin(VerifyOtpClientRequest request) {
+    public ResponseEntity<?> verifyOtp(VerifyOtpClientRequest request) {
 
-        Optional<UserModel> userOpt = userRepo.findById(Long.parseLong(request.getUserId()));
+        Optional<UserModel> userOpt = userRepo.findByPhone(request.getUserPhone());
 
-        if (userOpt.isEmpty()) {
-            return ResponseEntity.status(400).body("");
-        }
 
-        VerifyOtpRespons verifyRespons = webClientServices.verifyOtp(
-                request.getUserName(),
-                request.getAnswer(),
-                request.getSession(),
-                userOpt.get().getPhone());
+        MultiValueMap<String, String> formData = new LinkedMultiValueMap<>();
+        formData.add("user_phone", request.getUserPhone());
+        formData.add("verify_code", request.getVerifyCode());
 
-        if (verifyRespons.getAuthenticationResult() == null) {
+
+        VerifyOtpRespons verifyRespons = webClientServices.verifyOtp(formData,userOpt.get().getUserHeaders(),request);
+
+        if (!verifyRespons.getSuccess() && verifyRespons.getAccessToken() == null && !verifyRespons.getVerified()) {
             return ResponseEntity.status(500).body("Something went wrong while verifying OTP.");
         }
 
-        String idToken = verifyRespons.getAuthenticationResult().getIdToken();
 
-        userOpt.get().setJwt(idToken);
-        userOpt.get().setRefreshToken(verifyRespons.getAuthenticationResult().getRefreshToken());
+        String accessToken = verifyRespons.getAccessToken();
+        String refreshToken = verifyRespons.getRefreshToken();
 
-        UserHeaderModel headers = userOpt.get().getUserHeaders();
-        if (userOpt.get().getApiKey() == null) {
-            userOpt.get().setApiKey(ApiKeyGenerator.generateApiKey());
+        
+        if (userOpt.get().getApiKey()== null){
+           userOpt.get().setApiKey(ApiKeyGenerator.generateApiKey());
         }
+            
+       
 
-        if (headers == null) {
-            headers = new UserHeaderModel();
-            userOpt.get().setUserHeaders(headers);
-        }
-        headers.setAuthorization("Bearer " + idToken);
-        headers.setXLat(request.getXLat());
-        headers.setXLong(request.getXLong());
+        SuccefullLoginResponse succesfullLoginResponse = webClientServices.login(LoginRequest.builder().phone(request.getUserPhone()).build(),
+        userOpt.get().getUserHeaders(), accessToken);
 
-        try {
+        if(succesfullLoginResponse.getUserData().getPhone() != null && succesfullLoginResponse.getUserData().getRoleDetails().getUserId()!= null 
+                && succesfullLoginResponse.getUserData().getRoleDetails().getEmployeeId()!= null) {
+            UserHeaderModel header =  UserHeaderModel.builder()
+                                  .xLat(request.getXLat().toString())
+                                  .xLong(request.getXlong().toString())
+                                  .employeeId(succesfullLoginResponse.getUserData().getRoleDetails().getEmployeeId())
+                                  .employeeName(succesfullLoginResponse.getUserData().getName())
+                                  .userId(succesfullLoginResponse.getUserData().getRoleDetails().getUserId())
+                                  .role("PICKER")
+                                  .siteId(succesfullLoginResponse.getUserData().getRoleDetails().getActiveSiteId())
+                                  .siteName(succesfullLoginResponse.getUserData().getSiteName())
+                                  .userHttpSessionToken(succesfullLoginResponse.getSessionToken())
+                                  .userSessionToken(succesfullLoginResponse.getSessionToken())
+                                  .accessToken(accessToken)
+                                  .refreshToken(refreshToken)
+                                  .build();
 
-            JsonNode idTokenClaims = extractJwtPayload(idToken);
-            headers.setEmployeeId(getTextClaim(idTokenClaims, "employeeId"));
-            headers.setEmployeeName(getTextClaim(idTokenClaims, "employeeName"));
-            headers.setSiteId(getTextClaim(idTokenClaims, "siteId"));
-            headers.setXDeviceId(UUID.randomUUID().toString() + ":" + System.currentTimeMillis());
-            headers.setRole(extractPickerRole(getTextClaim(idTokenClaims, "roles")));
-        } catch (Exception e) {
-            return ResponseEntity.status(500).body("try again later");
-        }
-
+        userOpt.get().setUserHeaders(header);
         userRepo.save(userOpt.get());
 
-        String accessToken = jwtServices.generateAccessToken(userOpt.get());
-        String refreshToken = jwtServices.generateRefreshToken(userOpt.get());
+
+      
+
+        String applicationInternalToken = jwtServices.generateAccessToken(userOpt.get());
+        String applicationInternalRefreshToken = jwtServices.generateRefreshToken(userOpt.get());
 
         return ResponseEntity.status(200).body(LoginRespons.builder()
-                .token(accessToken)
-                .refreshtoken(refreshToken)
+                .token(applicationInternalToken)
+                .refreshtoken(applicationInternalRefreshToken)
                 .message("success")
                 .build());
+        }  else {
+            return ResponseEntity.status(500).body(LoginRespons.builder()
+                .token("")
+                .refreshtoken("")
+                .message("failed")
+                .build());
+        }
+       
+ 
     }
 
     public ResponseEntity<?> refreshAccessToken(RefreshTokenRequest request) {
@@ -163,7 +170,9 @@ public class AuthServices {
                 .build());
     }
 
-    public Boolean generateInternalToken(String token) {
+   /* 
+
+     public Boolean generateInternalToken(String token) {
 
         if (token != null && token.startsWith("Bearer ")) {
             token = token.substring(7);
@@ -244,4 +253,8 @@ public class AuthServices {
 
         return null;
     }
+    
+    */
+
+   
 }

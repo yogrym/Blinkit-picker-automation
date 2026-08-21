@@ -5,6 +5,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import org.springframework.stereotype.Component;
 
+import com.picker.BlinkitPicker.Enums.ApiEnums;
 import com.picker.BlinkitPicker.Model.ApiModel;
 import com.picker.BlinkitPicker.Repository.AppCaheRepo;
 
@@ -27,12 +28,12 @@ public class AppCahe {
       refresh();
    }
 
-   public String getApiUrl(String apiName) {
-      return cache.get(apiName);
+   public String getApiUrl(ApiEnums apiEnums) {
+      return cache.get(apiEnums.name());
    }
 
-   public boolean contains(String apiName) {
-      return cache.containsKey(apiName);
+   public boolean contains(ApiEnums apiEnums) {
+      return cache.containsKey(apiEnums.name());
    }
 
    public void refresh() {

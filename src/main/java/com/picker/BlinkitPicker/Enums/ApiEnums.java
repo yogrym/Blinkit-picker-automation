@@ -2,11 +2,12 @@ package com.picker.BlinkitPicker.Enums;
 
 public enum ApiEnums {
     API_BASE,
+    SEND_OTP,
+    VERIFY_OTP,
+    LOGIN,
     BOOK_SLOT,
     FETCH_SLOTS,
-    COGNITO_AUTH,
-    COGNITO_POOL_ID,
-    COGNITO_CLIENT_ID,
+    ROATATE_TOKEN,
     JWT_SECRET,
     JWT_EXPIRATION
 }

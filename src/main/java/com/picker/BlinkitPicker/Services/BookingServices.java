@@ -397,7 +397,7 @@ public class BookingServices implements ApplicationRunner {
                 headers.getSiteId(),
                 user,
                 request,
-                headers.getAuthorization(),
+                headers.getAccessToken(),
                 headers.getUserAgent()
             );
 
