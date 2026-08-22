@@ -34,6 +34,7 @@ public class Auth {
     @PostMapping("/refresh")
     public ResponseEntity<?> refresh(@Valid @RequestBody RefreshTokenRequest refreshTokenRequest) {
         return authService.refreshAccessToken(refreshTokenRequest);
+        
     }
     /* @PostMapping("/internal-token")
     public ResponseEntity<?> internalToken(@RequestHeader("Authorization") String token) {

@@ -219,23 +219,25 @@ public class WebClientServices {
 
 
       public CognitoRefreshTokenRespons refreshToken(MultiValueMap<String,String> formData , UserHeaderModel headers) {
+                String xTrace = GenerateCookie.generateRequestId();
                 return webClient.post()
                                 .uri(appCahe.getApiUrl(ApiEnums.ROATATE_TOKEN))
-                                .header("Content-Type", "application/x-www-form-urlencoded")
-                                .header("x-app-version-code", headers.getAppVersionCode())
-                                .header("x-app-version", headers.getAppVersion())
-                                .header("x-client-name", headers.getClientName())
-                                .header("x-device-id", headers.getXDeviceId())
-                                .header("x-device-manufacturer", headers.getDeviceManufacturer())
-                                .header("x-supply-apps-kit-version", headers.getSupplyAppsKitVersion())
-                                .header("x-device-hardware-type", headers.getDeviceHardwareType())
-                                .header("session-token",headers.getUserSessionToken())
-                                .header("http_session_token", headers.getUserHttpSessionToken())
+                                .headers(httpHeaders -> {
+                                    httpHeaders.set("Content-Type", "application/x-www-form-urlencoded");
+                                    httpHeaders.set("access_token", headers.getAccessToken() != null ? headers.getAccessToken() : "");
+                                    httpHeaders.set("x-api-key", "b30153b3-a5f8-4118-9af9-43d05487c1b3");
+                                    httpHeaders.set("requestId", xTrace);
+                                    httpHeaders.set("X-Request-Id", xTrace);
+                                    httpHeaders.set("x-gr-trace-id", xTrace);
+                                    httpHeaders.set("x-app-locale", safe(headers.getAppLocale()));
+                                    httpHeaders.set("X-Lat", safe(headers.getXLat()));
+                                    httpHeaders.set("X-Long", safe(headers.getXLong()));
+                                })
                                 .body(BodyInserters.fromFormData(formData))
                                 .retrieve()
                                 .bodyToMono(CognitoRefreshTokenRespons.class)
                                 .block();
-        } 
+        }
 
         private String toIndianE164PhoneNumber(String phoneNumber) {
                 if (phoneNumber == null || phoneNumber.isBlank()) {

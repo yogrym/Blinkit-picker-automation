@@ -247,8 +247,14 @@ public class BookingWorker implements Runnable {
             }
 
            
+        } catch (WebClientResponseException e) {
+            String responseBody = e.getResponseBodyAsString();
+            logger.error("[TOKEN-ROTATE] Blinkit responded with HTTP {} for user {}. Response body: {}",
+                    e.getStatusCode().value(), headers.getEmployeeName(), responseBody);
+            addLog("Session refresh failed.");
+            return false;
         } catch (Throwable e) {
-            logger.error("Accesss Token renewed failed {}: {}", headers.getEmployeeName(), e.toString());
+            logger.error("[TOKEN-ROTATE] Unexpected error refreshing token for {}: {}", headers.getEmployeeName(), e.toString());
             addLog("Session refresh failed.");
             return false;
         }

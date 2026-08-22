@@ -68,11 +68,14 @@ public class AdminServices {
             }
         }
 
+        UserHeaderModel header = UserHeaderModel.builder().build();
+
         UserModel user = UserModel.builder()
                 .phone(request.getPhone())
                 .role(request.getRole())
                 .apiKey(ApiKeyGenerator.generateApiKey())
                 .expiresAt(expiresAt)
+                .userHeaders(header)
                 .build();
 
         userRepo.save(user);
@@ -87,37 +90,35 @@ public class AdminServices {
 
 
 
-     public SignupRespons addFreeUser(SignupRequest request) {
+    public SignupRespons addFreeUser(SignupRequest request) {
         Optional<UserModel> userOpt = userRepo.findByPhone(request.getPhone());
 
         if (userOpt.isPresent()) {
             return SignupRespons.builder()
                     .status("failure")
-                    .message("cannot create new user, user exists with this phone number")
+                    .message("user account exists")
                     .build();
         }
 
-        
-
         request.setRole(request.getRole() != null ? request.getRole() : RoleEnum.USER);
 
-        LocalDateTime expiresAt = LocalDateTime.now().plusWeeks(1); 
-       
+        LocalDateTime expiresAt = LocalDateTime.now().plusWeeks(1);
 
+        UserHeaderModel header = UserHeaderModel.builder().build();
         UserModel user = UserModel.builder()
                 .phone(request.getPhone())
                 .role(request.getRole())
                 .apiKey(ApiKeyGenerator.generateApiKey())
                 .expiresAt(expiresAt)
+                .userHeaders(header)
                 .build();
 
         userRepo.save(user);
 
         return SignupRespons.builder()
                 .status("success")
-                .message("user created successfully")
+                .message("new account has been created")
                 .build();
-
     }
 
     public AdminUserListResponse getUsers(Integer page, Integer size) {
