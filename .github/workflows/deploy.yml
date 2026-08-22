@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  APP_NAME: blinkit-picker
-  REMOTE_DIR: /opt/blinkit-picker
+  REMOTE_DIR: /picker_backend/jar
+  APP_NAME: BlinkitPicker
   SERVICE_NAME: blinkit-picker
 
 jobs:
@@ -57,15 +57,19 @@ jobs:
             set -eu
             JAR_PATH="$(find "$RELEASE_DIR" -maxdepth 1 -type f -name '*.jar' | head -n 1)"
             test -n "$JAR_PATH"
-
-            sudo install -d -o blinkit -g blinkit "${REMOTE_DIR}"
-            sudo install -m 0644 "$JAR_PATH" "${REMOTE_DIR}/${APP_NAME}.jar"
+            
+            # Ensure the target directory exists
+            sudo mkdir -p "${REMOTE_DIR}"
+            
+            # Move the jar to the correct location and rename it
+            sudo mv "$JAR_PATH" "${REMOTE_DIR}/${APP_NAME}.jar"
+            
+            # (Optional) Ensure proper ownership/permissions if needed, e.g., sudo chown root:root
+            
+            # Restart the service
             sudo systemctl daemon-reload
             sudo systemctl restart "${SERVICE_NAME}"
             sudo systemctl is-active --quiet "${SERVICE_NAME}"
-
+            
+            # Cleanup temp directory
             rm -rf "$RELEASE_DIR"
-        env:
-          REMOTE_DIR: ${{ env.REMOTE_DIR }}
-          APP_NAME: ${{ env.APP_NAME }}
-          SERVICE_NAME: ${{ env.SERVICE_NAME }}
