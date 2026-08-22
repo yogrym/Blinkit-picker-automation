@@ -101,6 +101,19 @@ public class BookingServices implements ApplicationRunner {
         return Collections.emptyList();
     }
 
+    public boolean forceWorkerAccessTokenRefresh(String token, String sessionId) {
+        Long userId = jwtServices.extractUserId(token);
+        if (workerMap.containsKey(userId.toString())) {
+            WorkerList userWorkers = workerMap.get(userId.toString());
+            BookingWorker worker = userWorkers.getWorker(sessionId);
+            if (worker != null) {
+                return worker.forceAccessTokenRefresh();
+            }
+        }
+        throw new RuntimeException("Session not found or worker not active");
+    }
+
+
     public String stopBooking(String token, String sessionId) {
         Long userId = jwtServices.extractUserId(token);
         if (workerMap.containsKey(userId.toString())) {

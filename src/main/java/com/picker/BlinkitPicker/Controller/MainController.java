@@ -158,8 +158,30 @@ public class MainController {
         }
     }
 
-   
+    @PostMapping("/force-refresh")
+    public ResponseEntity<?> forceRefreshWorkerAccessToken(@RequestHeader("Authorization") String token,
+            @RequestBody java.util.Map<String, String> body) {
+        if (token != null && token.startsWith("Bearer ")) {
+            token = token.substring(7);
+        } else {
+            return ResponseEntity.status(401).body("Invalid token");
+        }
+        
+        String sessionId = body.get("sessionId");
+        if (sessionId == null || sessionId.trim().isEmpty()) {
+            return ResponseEntity.badRequest().body("sessionId is required in the body");
+        }
 
-   
+        try {
+            boolean success = bookingServices.forceWorkerAccessTokenRefresh(token, sessionId);
+            if (success) {
+                return ResponseEntity.ok("AccessToken refreshed successfully");
+            } else {
+                return ResponseEntity.status(500).body("Failed to refresh AccessToken");
+            }
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
 
 }

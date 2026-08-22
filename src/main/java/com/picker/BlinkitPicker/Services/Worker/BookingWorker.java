@@ -203,15 +203,15 @@ public class BookingWorker implements Runnable {
             }
 
             logger.error("[{}]] " + operationName + " returned HTTP "
-                    + e.getStatusCode().value() + ". Refreshing JWT token.", headers.getEmployeeName());
+                    + e.getStatusCode().value() + ". Refreshing AccessToken.", headers.getEmployeeName());
 
             addLog("Session expired while processing your booking. Refreshing the session.");
 
-            if (!refreshJwtToken(refreshToken,headers)) {
+            if (!refreshAccessToken(refreshToken,headers)) {
                 throw e;
             }
 
-            logger.info("[BookingWorker - " + headers.getEmployeeName() + "] JWT token refreshed. Retrying " + operationName + ".");
+            logger.info("[BookingWorker - " + headers.getEmployeeName() + "] AccessToken refreshed. Retrying " + operationName + ".");
             addLog("Session refreshed. Retrying the request.");
             return apiCall.get().block();
         }
@@ -222,7 +222,11 @@ public class BookingWorker implements Runnable {
         return statusCode == 401 || statusCode == 403;
     }
 
-    private boolean refreshJwtToken(String refreshToken, UserHeaderModel headers) {
+    public boolean forceAccessTokenRefresh() {
+        return refreshAccessToken(this.refreshToken, this.headers);
+    }
+
+    private boolean refreshAccessToken(String refreshToken, UserHeaderModel headers) {
         try {
 
             MultiValueMap<String,String> formData = new LinkedMultiValueMap<>();
@@ -231,7 +235,7 @@ public class BookingWorker implements Runnable {
             CognitoRefreshTokenRespons response = webClientServices.refreshToken(formData,headers);
 
             if (!response.getSuccess()) {
-                logger.error("Cannot refresh JWT token for user {}: ", headers.getEmployeeName());
+                logger.error("Cannot refresh AccessToken for user {}: ", headers.getEmployeeName());
                 addLog("Session refresh failed.");
                 return false;
             }
@@ -239,6 +243,9 @@ public class BookingWorker implements Runnable {
             if (response.getAccessToken() != null && response.getRefreshToken()!=null) {
                 headers.setAccessToken(response.getAccessToken());
                 headers.setRefreshToken(response.getRefreshToken());
+                this.accessToken = response.getAccessToken();
+                this.refreshToken = response.getRefreshToken();
+                saveUserHeaders();
                 logger.info("User session has been renewed  {}: ", headers.getEmployeeName());
                 addLog("Your session has been renewed");
                 return true;
