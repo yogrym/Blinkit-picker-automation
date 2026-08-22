@@ -37,26 +37,29 @@ spring.jpa.hibernate.ddl-auto=update
 
 ---
 
-## 🔗 Configuring API Endpoints
+## 🔗 Configuring API Endpoints (Dynamic Database Cache)
 
-To avoid leaking private APIs, the actual API target URLs are decoupled from the Java codebase. **You must provide your own API endpoints** in `application.properties` before deploying. The `WebClientServices` class will inject these values at runtime.
+To avoid leaking private APIs and to allow dynamic updates without restarting the application, the API target URLs and sensitive configurations are decoupled from the Java codebase and `application.properties`. 
 
-```properties
-# --- API Endpoints Configuration ---
-api.base=<YOUR_BASE_API_URL>
-list.slots.url=/your_list_slots_endpoint
-book.slot.url=/your_book_slot_endpoint
-available.dates.url=/your_available_dates_endpoint
+Instead, this project uses an **in-memory `AppCahe`** powered by the PostgreSQL database. **You must insert your API endpoints** directly into the `server_api_configs` table.
 
-# --- Authentication Configuration (AWS Cognito) ---
-cognito.url=<YOUR_COGNITO_URL>
-cognito.clientId=<YOUR_COGNITO_CLIENT_ID>
-cognito.poolId=<YOUR_COGNITO_POOL_ID>
+1. Once the application runs for the first time, Hibernate will create the `server_api_configs` table.
+2. Insert your configurations into the table matching the `ApiEnums`:
 
-# --- JWT Configuration ---
-jwt.secret=<YOUR_SECURE_JWT_SECRET_KEY>
-jwt.expiration=86400000
+```sql
+INSERT INTO server_api_configs (api_name, api_url) VALUES 
+('API_BASE', 'https://your_base_api_url'),
+('SEND_OTP', '/your_send_otp_endpoint'),
+('VERIFY_OTP', '/your_verify_otp_endpoint'),
+('LOGIN', '/your_login_endpoint'),
+('BOOK_SLOT', '/your_book_slot_endpoint'),
+('FETCH_SLOTS', '/your_fetch_slots_endpoint'),
+('ROATATE_TOKEN', 'https://your_cognito_url'),
+('JWT_SECRET', 'YOUR_SECURE_JWT_SECRET_KEY'),
+('JWT_EXPIRATION', '86400000');
 ```
+
+The `AppCahe.java` service will automatically load these into a thread-safe `ConcurrentHashMap` on startup.
 
 ---
 
@@ -126,7 +129,7 @@ if (bookingResponse.getStatusCode().is2xxSuccessful() && bookingResponse.getBody
 
 1. Clone the repository.
 2. Set up your PostgreSQL instance and update `application.properties`.
-3. Provide your secure API URLs, Cognito credentials, and JWT secret in `application.properties`.
+3. Start the application once to generate the schema, then insert your secure API URLs and JWT configuration into the `server_api_configs` database table.
 4. Run the Spring Boot application using the Maven wrapper:
    ```bash
    ./mvnw clean install
