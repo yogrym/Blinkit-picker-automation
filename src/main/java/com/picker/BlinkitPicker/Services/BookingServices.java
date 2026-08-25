@@ -116,20 +116,26 @@ public class BookingServices implements ApplicationRunner {
 
     public String stopBooking(String token, String sessionId) {
         Long userId = jwtServices.extractUserId(token);
+        
+        // Always try to delete from DB first, in case the worker isn't in memory
+        BookingTaskModel bookingTask = bookingTaskRepo.findByUserIdAndSessionIdAndActiveTrue(userId, sessionId).orElse(null);
+        if (bookingTask != null) {
+            bookingTaskRepo.delete(bookingTask);
+        }
+
         if (workerMap.containsKey(userId.toString())) {
             WorkerList userWorkers = workerMap.get(userId.toString());
             BookingWorker worker = userWorkers.getWorker(sessionId);
             if (worker != null) {
                 worker.stop();
                 userWorkers.removeWorker(sessionId);
-
-                BookingTaskModel bookingTask = bookingTaskRepo.findByUserIdAndSessionIdAndActiveTrue(userId, sessionId).orElse(null);
-                if (bookingTask != null) {
-                   bookingTaskRepo.delete(bookingTask);
-                }
                 return "Stopped " + sessionId;
             }
         } 
+
+        if (bookingTask != null) {
+            return "Stopped " + sessionId;
+        }
 
         return "OOPS! Session not found. It may have already been stopped or never existed.";
         
@@ -317,15 +323,33 @@ public class BookingServices implements ApplicationRunner {
         }
 
         WorkerList userWorker = workerMap.get(userId.toString());
+        if (userWorker != null) {
+            BookingWorker bookingWorker = userWorker.getWorker(sessionId);
+            if (bookingWorker != null) {
+                if (date != null) {
+                    bookingWorker.removeOneDateFromList(date);
+                }
 
-        BookingWorker bookingWorker = userWorker.getWorker(sessionId);
-        if (date != null) {
-            bookingWorker.removeOneDateFromList(date);
+                if (time != null) {
+                    bookingWorker.removeOneTimeFromList(time);
+                }
+            }
         }
-
-        if (time != null) {
-            bookingWorker.removeOneTimeFromList(time);
-        }
+        
+        bookingTaskRepo.findByUserIdAndSessionIdAndActiveTrue(userId, sessionId).ifPresent(task -> {
+            boolean updated = false;
+            if (date != null && task.getDates() != null) {
+                task.getDates().remove(date);
+                updated = true;
+            }
+            if (time != null && task.getTimes() != null) {
+                task.getTimes().remove(time);
+                updated = true;
+            }
+            if (updated) {
+                bookingTaskRepo.save(task);
+            }
+        });
 
         return true;
     }

@@ -26,6 +26,9 @@ import com.picker.BlinkitPicker.Repository.UserRepo;
 import com.picker.BlinkitPicker.Services.Worker.BookingWorker;
 import com.picker.BlinkitPicker.Util.ApiKeyGenerator;
 
+import com.picker.BlinkitPicker.Repository.BookingTaskRepo;
+import com.picker.BlinkitPicker.Model.BookingTaskModel;
+
 @Service
 public class AdminServices {
     private static final int DEFAULT_USER_PAGE_SIZE = 25;
@@ -33,6 +36,9 @@ public class AdminServices {
 
     @Autowired
     private UserRepo userRepo;
+
+    @Autowired
+    private BookingTaskRepo bookingTaskRepo;
 
     @Autowired
     private JwtServices jwtServices;
@@ -267,6 +273,12 @@ public class AdminServices {
             }
         }
 
+        // Delete from DB first
+        BookingTaskModel bookingTask = bookingTaskRepo.findByUserIdAndSessionIdAndActiveTrue(targetUserId, sessionId).orElse(null);
+        if (bookingTask != null) {
+            bookingTaskRepo.delete(bookingTask);
+        }
+
         ConcurrentHashMap<String, WorkerList> workerMap = bookingServices.getWorkerMap();
         if (workerMap.containsKey(targetUserId.toString())) {
             WorkerList userWorkers = workerMap.get(targetUserId.toString());
@@ -277,6 +289,11 @@ public class AdminServices {
                 return "Stopped " + sessionId;
             }
         }
+        
+        if (bookingTask != null) {
+            return "Stopped " + sessionId;
+        }
+
         throw new ResponseStatusException(HttpStatus.NOT_FOUND, "session not found");
     }
 
