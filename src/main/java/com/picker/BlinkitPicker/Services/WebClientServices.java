@@ -145,7 +145,7 @@ public class WebClientServices {
                                                 httpHeaders.set("x-grace-trace-id", xTrace);
                                                 httpHeaders.set("requestid", xTrace);
                                                 httpHeaders.set("x-request-id", xTrace);
-                                                httpHeaders.set("cookie", GenerateCookie.generateCfBmCookie());
+                                                httpHeaders.set("cookie", safe(headers.getCookie()));
                                                 httpHeaders.set("x-app-locale", safe(headers.getAppLocale()));
                                                 httpHeaders.set("access_token","");
                                                 httpHeaders.set("priority", safe(headers.getPriority()));

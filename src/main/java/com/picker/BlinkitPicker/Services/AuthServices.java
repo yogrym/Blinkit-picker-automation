@@ -9,8 +9,8 @@ import org.springframework.util.MultiValueMap;
 import com.picker.BlinkitPicker.Dto.request.SendOtpRequest;
 import com.picker.BlinkitPicker.Dto.request.LoginRequest;
 import com.picker.BlinkitPicker.Dto.request.RefreshTokenRequest;
-import com.picker.BlinkitPicker.Dto.request.SignupRequest;
 import com.picker.BlinkitPicker.Dto.request.VerifyOtpClientRequest;
+import com.picker.BlinkitPicker.Dto.respons.ApplicationSendOtpResponse;
 import com.picker.BlinkitPicker.Dto.respons.LoginRespons;
 import com.picker.BlinkitPicker.Dto.respons.SuccefullLoginResponse;
 import com.picker.BlinkitPicker.Dto.respons.SuccessfullOtpResponse;
@@ -47,22 +47,32 @@ public class AuthServices {
 
          if (userOpt.isEmpty()) {
 
+           return ResponseEntity.status(400).body(ApplicationSendOtpResponse.builder()
+                                                     .status("failed")
+                                                     .action("CREATE_ACCOUNT")
+                                                     .build());
+                                                     
+            /*
             SignupRequest signupRequest = SignupRequest.builder()
                     .phone(request.getUserPhone())
                     .plan("weekly")
                     .build();
 
            adminServices.addFreeUser(signupRequest);
-           userOpt = userRepo.findByPhone(request.getUserPhone());
+           userOpt = userRepo.findByPhone(request.getUserPhone()); */
         }
+
+        UserModel user = userOpt.get();
     
         MultiValueMap<String, String> formData = new LinkedMultiValueMap<>();
         formData.add("user_phone", request.getUserPhone());
         formData.add("country_code",request.getCountryCode() != null ? request.getCountryCode() : "91");
 
-        SuccessfullOtpResponse response = webClientServices.sendOtpToUser(formData, userOpt.get().getUserHeaders(),request);
+        SuccessfullOtpResponse response = webClientServices.sendOtpToUser(formData, user.getUserHeaders(),request);
+        
         if (!response.isSuccess() && !response.isLogin()) {
-            return ResponseEntity.status(500).body("Could not send OTP. Please try again later.");
+            return ResponseEntity.status(400).body(ApplicationSendOtpResponse.builder().status("failed")
+            .action("TRY_AGAIN").msg("Could not send otp to this number").build());
         }
 
         return ResponseEntity.status(200).body(response);
@@ -73,6 +83,15 @@ public class AuthServices {
 
         Optional<UserModel> userOpt = userRepo.findByPhone(request.getUserPhone());
 
+        if(!userOpt.isPresent()) {
+            return ResponseEntity.status(500).body(LoginRespons.builder()
+                .token("")
+                .refreshtoken("")
+                .message("No accounts belongs to this mobile number try creating a account first")
+                .build());
+        }
+
+        UserModel user = userOpt.get();
 
         MultiValueMap<String, String> formData = new LinkedMultiValueMap<>();
         formData.add("user_phone", request.getUserPhone());
@@ -81,8 +100,9 @@ public class AuthServices {
 
         VerifyOtpRespons verifyRespons = webClientServices.verifyOtp(formData,userOpt.get().getUserHeaders(),request);
 
-        if (!verifyRespons.getSuccess() && verifyRespons.getAccessToken() == null && !verifyRespons.getVerified()) {
-            return ResponseEntity.status(500).body("Something went wrong while verifying OTP.");
+        if (!verifyRespons.getSuccess() && verifyRespons.getAccessToken() == null && 
+           verifyRespons.getRefreshToken() == null) {
+            return ResponseEntity.status(400).body("Somthing went wrong maybe otp was incorrect");
         }
 
 
@@ -90,17 +110,19 @@ public class AuthServices {
         String refreshToken = verifyRespons.getRefreshToken();
 
         
-        if (userOpt.get().getApiKey()== null){
+        if (user.getApiKey() == null) {
            userOpt.get().setApiKey(ApiKeyGenerator.generateApiKey());
         }
             
        
 
         SuccefullLoginResponse succesfullLoginResponse = webClientServices.login(LoginRequest.builder().phone(request.getUserPhone()).rfIdSupported(false).build(),
-        userOpt.get().getUserHeaders(), accessToken);
+        user.getUserHeaders(), accessToken);
 
-        if(succesfullLoginResponse.getUserData().getPhone() != null && succesfullLoginResponse.getUserData().getRoleDetails().getUserId()!= null 
-                && succesfullLoginResponse.getUserData().getRoleDetails().getEmployeeId()!= null) {
+         if (succesfullLoginResponse != null && succesfullLoginResponse.getUserData() != null &&                                     
+        succesfullLoginResponse.getUserData().getRoleDetails() != null) {                                                       
+                                                         
+        
             UserHeaderModel header =  UserHeaderModel.builder()
                                   .xLat(request.getXLat().toString())
                                   .xLong(request.getXlong().toString())
@@ -119,9 +141,6 @@ public class AuthServices {
         userOpt.get().setUserHeaders(header);
         userRepo.save(userOpt.get());
 
-
-      
-
         String applicationInternalToken = jwtServices.generateAccessToken(userOpt.get());
         String applicationInternalRefreshToken = jwtServices.generateRefreshToken(userOpt.get());
 
@@ -131,7 +150,7 @@ public class AuthServices {
                 .message("success")
                 .build());
         }  else {
-            return ResponseEntity.status(500).body(LoginRespons.builder()
+            return ResponseEntity.status(400).body(LoginRespons.builder()
                 .token("")
                 .refreshtoken("")
                 .message("failed")

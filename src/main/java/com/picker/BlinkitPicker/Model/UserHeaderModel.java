@@ -122,9 +122,10 @@ public class UserHeaderModel {
     
     @JsonProperty("refresh_token")
     private String refreshToken;
-
+    
+    @Builder.Default
     @JsonProperty("x-device-id")
-    private String xDeviceId;
+    private String xDeviceId = "5a563dc4d76e2102";
 
     @JsonProperty("employeeid")
     private String employeeId;
@@ -155,4 +156,18 @@ public class UserHeaderModel {
 
     @JsonProperty("x-long")
     private String xLong;
+
+    public String getXDeviceId() {
+        if (xDeviceId == null || xDeviceId.isEmpty()) {
+            xDeviceId = java.util.UUID.randomUUID().toString();
+        }
+        return xDeviceId;
+    }
+
+    public String getCookie() {
+        if (cookie == null || cookie.isEmpty()) {
+            cookie = com.picker.BlinkitPicker.Util.GenerateCookie.generateCfBmCookie();
+        }
+        return cookie;
+    }
 }

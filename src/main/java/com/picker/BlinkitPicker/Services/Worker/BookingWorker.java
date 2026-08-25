@@ -78,8 +78,14 @@ public class BookingWorker implements Runnable {
 
     public void saveUserHeaders() {
         if (this.user != null && this.headers != null) {
-            this.user.setUserHeaders(this.headers);
-            this.userRepo.save(this.user);
+            Long id = this.user.getId() != null ? this.user.getId() : this.headers.getUserId();
+            if (id != null) {
+                UserModel latestUser = this.userRepo.findById(id).orElse(this.user);
+                latestUser.setUserHeaders(this.headers);
+                this.userRepo.save(latestUser);
+                this.user.setUserHeaders(this.headers);
+                this.user.setTotalBookedSlots(latestUser.getTotalBookedSlots());
+            }
         }
     }
 
@@ -396,6 +402,7 @@ public class BookingWorker implements Runnable {
             Long currentTotal = latestUser.getTotalBookedSlots() != null ? latestUser.getTotalBookedSlots() : 0L;
             latestUser.setTotalBookedSlots(currentTotal + count);
             userRepo.save(latestUser);
+            this.user.setTotalBookedSlots(currentTotal + count);
         } catch (Exception e) {
             logger.error("Failed to save booked slot count: {}", e.toString());
             addLog("Booked slot count could not be saved.");
