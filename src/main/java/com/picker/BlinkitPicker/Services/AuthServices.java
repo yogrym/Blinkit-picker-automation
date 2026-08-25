@@ -20,24 +20,15 @@ import com.picker.BlinkitPicker.Model.UserHeaderModel;
 import com.picker.BlinkitPicker.Repository.UserRepo;
 import com.picker.BlinkitPicker.Util.ApiKeyGenerator;
 
-import tools.jackson.databind.ObjectMapper;
-
 @Service
 public class AuthServices {
-
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private final UserRepo userRepo;
     private final JwtServices jwtServices;
     private final WebClientServices webClientServices;
-    private final AdminServices adminServices;
-
-    
-
     public AuthServices(UserRepo userRepo, JwtServices jwtServices, AdminServices adminServices, WebClientServices webClientServices) {
         this.userRepo = userRepo;
         this.jwtServices = jwtServices;
-        this.adminServices = adminServices;
         this.webClientServices = webClientServices;
     }
 

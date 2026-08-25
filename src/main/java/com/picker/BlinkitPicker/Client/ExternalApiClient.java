@@ -17,7 +17,7 @@ public class ExternalApiClient {
 
         private static final MediaType AWS_JSON = MediaType.valueOf("application/x-amz-json-1.1");
 
-        @Value("${api.base}")
+        @Value("${api.base:https://default.com}")
         private String blinkitBaseUrl;
 
         @Primary
