@@ -122,6 +122,35 @@ public class Admin {
         }
     }
 
+    @PostMapping("/force-refresh-session")
+    public ResponseEntity<?> forceRefreshSession(
+            @RequestHeader("Authorization") String token,
+            @RequestParam("userId") Long userId,
+            @RequestParam("sessionId") String sessionId) {
+        try {
+            return ResponseEntity.ok(adminServices.forceRefreshUserSession(token, userId, sessionId));
+        } catch (ResponseStatusException e) {
+            return ResponseEntity.status(e.getStatusCode()).body(e.getReason());
+        }
+    }
+
+    @GetMapping("/session-logs")
+    public ResponseEntity<?> getSessionLogs(
+            @RequestHeader("Authorization") String token,
+            @RequestParam("userId") Long userId,
+            @RequestParam("sessionId") String sessionId,
+            @RequestParam(required = false, defaultValue = "-1") int afterIndex) {
+        try {
+            com.picker.BlinkitPicker.Dto.respons.LogsResponse logsResponse = adminServices.getSessionLogs(token, userId, sessionId, afterIndex);
+            org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
+            headers.add("X-Logs-Reset", String.valueOf(logsResponse.isReset()));
+            headers.add("Access-Control-Expose-Headers", "X-Logs-Reset");
+            return ResponseEntity.ok().headers(headers).body(logsResponse.getLogs());
+        } catch (ResponseStatusException e) {
+            return ResponseEntity.status(e.getStatusCode()).body(e.getReason());
+        }
+    }
+
     @PostMapping("/renew-plan")
     public ResponseEntity<?> renewPlan(
             @RequestHeader("Authorization") String token,

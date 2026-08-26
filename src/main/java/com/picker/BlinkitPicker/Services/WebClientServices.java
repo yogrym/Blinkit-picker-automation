@@ -224,7 +224,6 @@ public class WebClientServices {
                                 .uri(appCahe.getApiUrl(ApiEnums.ROATATE_TOKEN))
                                 .headers(httpHeaders -> {
                                     httpHeaders.set("Content-Type", "application/x-www-form-urlencoded");
-                                    httpHeaders.set("access_token", headers.getAccessToken() != null ? headers.getAccessToken() : "");
                                     httpHeaders.set("x-api-key", "b30153b3-a5f8-4118-9af9-43d05487c1b3");
                                     httpHeaders.set("requestId", xTrace);
                                     httpHeaders.set("X-Request-Id", xTrace);

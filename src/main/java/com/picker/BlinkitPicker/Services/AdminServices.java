@@ -12,6 +12,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
+import com.picker.BlinkitPicker.Dto.Logs;
+
 import com.picker.BlinkitPicker.Dto.WorkerList;
 import com.picker.BlinkitPicker.Dto.WorkerList.BookingData;
 import com.picker.BlinkitPicker.Dto.request.SignupRequest;
@@ -329,6 +331,86 @@ public class AdminServices {
             }
         }
         throw new ResponseStatusException(HttpStatus.NOT_FOUND, "session not found");
+    }
+
+    public String forceRefreshUserSession(String token, Long targetUserId, String sessionId) {
+        var claims = jwtServices.extractClaimsSafely(token);
+        if (claims == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "invalid token");
+        }
+        String currentUserRole = claims.get("role", String.class);
+
+        UserModel targetUser = userRepo.findById(targetUserId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "target user not found"));
+
+        if ("MAINTAINER".equals(currentUserRole)) {
+            if (targetUser.getRole() == RoleEnum.ADMIN) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                        "a maintainer cannot refresh an admin's sessions");
+            }
+        }
+
+        ConcurrentHashMap<String, WorkerList> workerMap = bookingServices.getWorkerMap();
+        if (workerMap.containsKey(targetUserId.toString())) {
+            WorkerList userWorkers = workerMap.get(targetUserId.toString());
+            BookingWorker worker = userWorkers.getWorker(sessionId);
+            if (worker != null) {
+                boolean success = worker.forceAccessTokenRefresh();
+                if (success) {
+                    return "Session refreshed successfully";
+                } else {
+                    throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to refresh session");
+                }
+            }
+        }
+        throw new ResponseStatusException(HttpStatus.NOT_FOUND, "session not found");
+    }
+
+    public com.picker.BlinkitPicker.Dto.respons.LogsResponse getSessionLogs(String token, Long targetUserId, String sessionId, int afterIndex) {
+        var claims = jwtServices.extractClaimsSafely(token);
+        if (claims == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "invalid token");
+        }
+        String currentUserRole = claims.get("role", String.class);
+
+        UserModel targetUser = userRepo.findById(targetUserId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "target user not found"));
+
+        if ("MAINTAINER".equals(currentUserRole)) {
+            if (targetUser.getRole() == RoleEnum.ADMIN) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                        "a maintainer cannot view an admin's session logs");
+            }
+        }
+
+        ConcurrentHashMap<String, WorkerList> workerMap = bookingServices.getWorkerMap();
+        if (workerMap.containsKey(targetUserId.toString())) {
+            WorkerList userWorkers = workerMap.get(targetUserId.toString());
+            BookingWorker worker = userWorkers.getWorker(sessionId);
+            if (worker != null) {
+                List<Logs> allLogs = worker.getLogs();
+                boolean isReset = true;
+                List<Logs> logsToReturn;
+
+                if (afterIndex >= 0 && afterIndex < allLogs.size()) {
+                    logsToReturn = allLogs.subList(afterIndex + 1, allLogs.size());
+                    isReset = false;
+                } else {
+                    logsToReturn = allLogs;
+                    isReset = true;
+                }
+
+                return com.picker.BlinkitPicker.Dto.respons.LogsResponse.builder()
+                        .logs(logsToReturn)
+                        .isReset(isReset)
+                        .build();
+            }
+        }
+        
+        return com.picker.BlinkitPicker.Dto.respons.LogsResponse.builder()
+                .logs(java.util.Collections.emptyList())
+                .isReset(true)
+                .build();
     }
 
     public Boolean renewPlan(String token, Long userId, String planType) {

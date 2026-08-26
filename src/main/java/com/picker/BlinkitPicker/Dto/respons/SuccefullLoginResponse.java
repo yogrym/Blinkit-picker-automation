@@ -125,7 +125,7 @@ public class SuccefullLoginResponse {
         private Long id;
 
         @JsonProperty("role_names")
-        private List<String> roleNames;
+        private Object roleNames;
 
         @JsonProperty("user_id")
         private Long userId;
@@ -143,7 +143,7 @@ public class SuccefullLoginResponse {
         private String activeSiteId;
 
         @JsonProperty("permissions")
-        private List<String> permissions;
+        private Object permissions;
     }
 
     @Data
@@ -165,7 +165,7 @@ public class SuccefullLoginResponse {
         private String shiftStartTime;
 
         @JsonProperty("shift_ids")
-        private List<String> shiftIds;
+        private Object shiftIds;
 
         @JsonProperty("total_seconds_worked_today")
         private Integer totalSecondsWorkedToday;
@@ -205,7 +205,7 @@ public class SuccefullLoginResponse {
         private String onboardingId;
 
         @JsonProperty("job_preference")
-        private List<String> jobPreference;
+        private Object jobPreference;
 
         @JsonProperty("site_migration")
         private Object siteMigration;
@@ -247,7 +247,7 @@ public class SuccefullLoginResponse {
     public static class SpecialDaysData {
 
         @JsonProperty("days_available")
-        private List<String> daysAvailable;
+        private Object daysAvailable;
 
         @JsonProperty("applied_config_id")
         private Long appliedConfigId;
