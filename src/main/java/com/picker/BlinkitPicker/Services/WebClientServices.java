@@ -226,6 +226,7 @@ public class WebClientServices {
                                     httpHeaders.set("Content-Type", "application/x-www-form-urlencoded");
                                     httpHeaders.set("x-api-key", "b30153b3-a5f8-4118-9af9-43d05487c1b3");
                                     httpHeaders.set("requestId", xTrace);
+                                    httpHeaders.set("access_token", headers.getAccessToken());
                                     httpHeaders.set("X-Request-Id", xTrace);
                                     httpHeaders.set("x-gr-trace-id", xTrace);
                                     httpHeaders.set("x-app-locale", safe(headers.getAppLocale()));
@@ -238,18 +239,7 @@ public class WebClientServices {
                                 .block();
         }
 
-        private String toIndianE164PhoneNumber(String phoneNumber) {
-                if (phoneNumber == null || phoneNumber.isBlank()) {
-                        return phoneNumber;
-                }
-
-                String digitsOnly = phoneNumber.replaceAll("\\D", "");
-                if (digitsOnly.startsWith("91") && digitsOnly.length() == 12) {
-                        return "+" + digitsOnly;
-                }
-
-                return "+91" + digitsOnly;
-        }
+        
 
         public Mono<ResponseEntity<FetchSlotsResponse>> getSlotsDetails(UserHeaderModel headers,
                         FetchSlotsRequest fetchSlotsRequest) {

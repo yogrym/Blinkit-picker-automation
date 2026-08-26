@@ -62,6 +62,9 @@ public class BookingTaskModel {
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 
+    @Column(name = "last_token_refreshed")
+    private LocalDateTime lastTokenRefreshed;
+
     @UpdateTimestamp
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;

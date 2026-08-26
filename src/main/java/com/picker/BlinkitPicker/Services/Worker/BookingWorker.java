@@ -150,8 +150,7 @@ public class BookingWorker implements Runnable {
                 }
                
 
-                // Returns slots in user's preferred time-window order (same as bot)
-                // Key = slot ID, Value = IST time key e.g. "06:00-08:00"
+            
                 Map<String, String> slotIdToTime = filterSlotId(responseBody, times);
                 List<String> slotIds = new ArrayList<>(slotIdToTime.keySet());
 
@@ -214,6 +213,8 @@ public class BookingWorker implements Runnable {
             addLog("Session expired while processing your booking. Refreshing the session.");
 
             if (!refreshAccessToken(refreshToken,headers)) {
+                this.pause();
+                addLog("Automatic session refresh failed. Booking is now paused. Please login again to resume.");
                 throw e;
             }
 
@@ -306,14 +307,12 @@ public class BookingWorker implements Runnable {
             return Collections.emptyMap();
         }
 
-        // ── Step 2: keep only available + eligible slots 
+        
         List<FetchSlotsResponse.Slot> availableSlots = new ArrayList<>();
 
         for (FetchSlotsResponse.Slot slot : matchedStore.getSlots()) {
             boolean isBooked = slot.isBooked();
             boolean allowed = slot.getBookingEligibility() != null && slot.getBookingEligibility().isAllowed();
-            String timeKey = DateToUtc.slotTimeKey(slot.getStartTime(), slot.getEndTime());
-            String label = DateToUtc.decodeTime(slot.getStartTime(), slot.getEndTime());
 
             if (!isBooked && allowed) {
                 availableSlots.add(slot); 
