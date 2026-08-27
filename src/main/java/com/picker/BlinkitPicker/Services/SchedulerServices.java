@@ -36,9 +36,7 @@ public class SchedulerServices {
         List<BookingTaskModel> activeTasks = bookingTaskRepo.findByActiveTrue();
         
         for (BookingTaskModel task : activeTasks) {
-            LocalDateTime lastRefreshed = task.getLastTokenRefreshed();
            
-            if (lastRefreshed == null || ChronoUnit.MINUTES.between(lastRefreshed, LocalDateTime.now()) >= 60) {
                 
                 String userId = task.getUserId().toString();
                 String sessionId = task.getSessionId();
@@ -61,7 +59,7 @@ public class SchedulerServices {
                         }
                     }
                 }
-            }
+            
         }
     }
 }
