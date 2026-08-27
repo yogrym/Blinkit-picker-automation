@@ -32,34 +32,39 @@ public class SchedulerServices {
     public void proactivelyRefreshTokens() {
         logger.info("[Scheduler] Checking for tokens that need proactive refreshing...");
         
-        ConcurrentHashMap<String, WorkerList> workerMap = bookingServices.getWorkerMap();
-        List<BookingTaskModel> activeTasks = bookingTaskRepo.findByActiveTrue();
-        
-        for (BookingTaskModel task : activeTasks) {
-           
-                
-                String userId = task.getUserId().toString();
-                String sessionId = task.getSessionId();
-                
-                WorkerList workerList = workerMap.get(userId);
-                if (workerList != null) {
-                    BookingWorker worker = workerList.getWorker(sessionId);
-                    if (worker != null) {
-                        try {
+        try {
+            ConcurrentHashMap<String, WorkerList> workerMap = bookingServices.getWorkerMap();
+            List<BookingTaskModel> activeTasks = bookingTaskRepo.findByActiveTrue();
+            
+            for (BookingTaskModel task : activeTasks) {
+                try {
+                    if (task == null || task.getUserId() == null) {
+                        logger.warn("[Scheduler] Found a task with null userId. Skipping.");
+                        continue;
+                    }
+                    
+                    String userId = task.getUserId().toString();
+                    String sessionId = task.getSessionId();
+                    
+                    WorkerList workerList = workerMap.get(userId);
+                    if (workerList != null) {
+                        BookingWorker worker = workerList.getWorker(sessionId);
+                        if (worker != null) {
                             logger.info("[Scheduler] Proactively refreshing token for user {} session {}", userId, sessionId);
                             boolean success = worker.forceAccessTokenRefresh();
                             if (success) {
-                               
                                 task.setLastTokenRefreshed(LocalDateTime.now());
                                 bookingTaskRepo.save(task);
                                 logger.info("[Scheduler] Successfully refreshed token and updated DB for session {}", sessionId);
                             }
-                        } catch (Exception e) {
-                            logger.error("[Scheduler] Error refreshing token for session {}: {}", sessionId, e.getMessage());
                         }
                     }
+                } catch (Exception e) {
+                    logger.error("[Scheduler] Error processing task for session {}: {}", task.getSessionId(), e.getMessage(), e);
                 }
-            
+            }
+        } catch (Exception e) {
+            logger.error("[Scheduler] Fatal error in proactivelyRefreshTokens scheduler: {}", e.getMessage(), e);
         }
     }
 }
