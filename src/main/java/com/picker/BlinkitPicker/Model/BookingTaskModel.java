@@ -28,6 +28,7 @@ import lombok.NoArgsConstructor;
 })
 public class BookingTaskModel {
     
+    @Id
     @Column(name = "session_id" , nullable = false)
     private String sessionId;
 
@@ -43,7 +44,6 @@ public class BookingTaskModel {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class SessionInformation {
-        @Id
         @Column(name ="session_id")
         private String sessionId;
 
