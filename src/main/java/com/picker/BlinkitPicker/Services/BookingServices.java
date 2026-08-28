@@ -14,7 +14,6 @@ import com.picker.BlinkitPicker.Dto.Logs;
 import com.picker.BlinkitPicker.Model.BookingTaskModel;
 import com.picker.BlinkitPicker.Model.UserModel;
 import com.picker.BlinkitPicker.Model.BookingTaskModel.SessionInformation;
-import com.picker.BlinkitPicker.Model.BookingTaskModel.UserInformation;
 import com.picker.BlinkitPicker.Model.UserHeaderModel;
 import com.picker.BlinkitPicker.Repository.BookingTaskRepo;
 import com.picker.BlinkitPicker.Repository.UserRepo;
@@ -83,7 +82,6 @@ public class BookingServices implements ApplicationRunner {
                 .sessionId(sessionId)
                 .userId(userId)
                 .sessionInfo(SessionInformation.builder().sessionId(sessionId).dates(dates).times(times).build())
-                .userInfo(UserInformation.builder().userModel(user).build())
                 .paused(false)
                 .active(true)
                 .firstDate(firstDate)

@@ -36,41 +36,20 @@ public class BookingTaskModel {
     private Long userId;
 
     @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "user_information", nullable = false, columnDefinition = "jsonb")
-    private UserInformation userInfo;
-    
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "session_information", nullable = false, columnDefinition = "jsonb")
+    @Column(name = "session_information", columnDefinition = "jsonb")
     private SessionInformation sessionInfo;
 
- 
+
     @Data
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
     public static class SessionInformation {
-        @Column(name ="session_id")
         private String sessionId;
-
-        @JdbcTypeCode(SqlTypes.JSON)
-        @Column(name = "dates", nullable = false, columnDefinition = "jsonb")
         private List<String> dates;
-
-        @JdbcTypeCode(SqlTypes.JSON)
-        @Column(name = "times", nullable = false, columnDefinition = "jsonb")
         private List<String> times;
-
     }
 
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class UserInformation {
-
-       @Column(name = "user", nullable = false)
-       private UserModel userModel;
-    }
 
 
     @Builder.Default
