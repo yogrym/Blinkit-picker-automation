@@ -81,6 +81,7 @@ public class BookingServices implements ApplicationRunner {
 
         bookingTaskRepo.save(BookingTaskModel.builder()
                 .sessionId(sessionId)
+                .userId(userId)
                 .sessionInfo(SessionInformation.builder().sessionId(sessionId).dates(dates).times(times).build())
                 .userInfo(UserInformation.builder().userModel(user).build())
                 .paused(false)
@@ -277,7 +278,7 @@ public class BookingServices implements ApplicationRunner {
         List<BookingTaskModel> activeTasks = bookingTaskRepo.findByActiveTrue();
         for (BookingTaskModel task : activeTasks) {
             try {
-                UserModel user = userRepo.findById(task.getUserInfo().getUserModel().getId()).orElse(null);
+                UserModel user = userRepo.findById(task.getUserId()).orElse(null);
                 if (user == null) {
                     System.out.println("[BookingServices] Skipping restored session " + task.getSessionId()
                             + ": user not found.");
@@ -285,7 +286,7 @@ public class BookingServices implements ApplicationRunner {
                 }
 
                 BookingWorker worker = new BookingWorker(
-                        task.getUserInfo().getUserModel().getId().toString(),
+                        task.getUserId().toString(),
                         task.getSessionInfo().getDates(),
                         task.getSessionInfo().getTimes(),
                         user,
@@ -297,7 +298,7 @@ public class BookingServices implements ApplicationRunner {
                 }
 
                 addWorkerToMemory(
-                        task.getUserInfo().getUserModel().getId().toString(),
+                        task.getUserId().toString(),
                         task.getSessionId(),
                         worker,
                         Boolean.TRUE.equals(task.getPaused()),
@@ -305,7 +306,7 @@ public class BookingServices implements ApplicationRunner {
                         task.getLastDate());
 
                 System.out.println("[BookingServices] Restored booking session " + task.getSessionId()
-                        + " for user " + task.getUserInfo().getUserModel().getId());
+                        + " for user " + task.getUserId());
             } catch (Exception e) {
                 System.out.println("[BookingServices] Failed to restore booking session " + task.getSessionId()
                         + ": " + e.getMessage());

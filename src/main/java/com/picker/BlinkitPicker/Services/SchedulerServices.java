@@ -51,12 +51,12 @@ public class SchedulerServices {
             
             for (BookingTaskModel task : activeTasks) {
                 try {
-                    if (task == null || task.getUserInfo() == null || task.getUserInfo().getUserModel() == null || task.getUserInfo().getUserModel().getId() == null || task.getSessionInfo() == null) {
+                    if (task == null || task.getUserId() == null || task.getSessionInfo() == null) {
                         logger.warn("[Scheduler] Found a task with missing required fields (e.g. null userId). Skipping.");
                         continue;
                     }
 
-                    Long userId = task.getUserInfo().getUserModel().getId();
+                    Long userId = task.getUserId();
                     UserModel user = userRepo.findById(userId).orElse(null);
 
                     if (user != null) {
