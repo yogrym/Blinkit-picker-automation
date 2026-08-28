@@ -32,10 +32,12 @@ public class BookingTaskModel {
     @Column(name = "session_id" , nullable = false)
     private String sessionId;
 
-    @Column(name = "user_information",nullable = false)
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "user_information", nullable = false, columnDefinition = "jsonb")
     private UserInformation userInfo;
     
-    @Column(name = "session_information", nullable = false)
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "session_information", nullable = false, columnDefinition = "jsonb")
     private SessionInformation sessionInfo;
 
  
