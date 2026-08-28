@@ -24,25 +24,49 @@ import lombok.NoArgsConstructor;
 @Builder
 @Entity
 @Table(name = "booking_tasks", indexes = {
-        @Index(name = "idx_booking_tasks_user_active", columnList = "user_id, active"),
         @Index(name = "idx_booking_tasks_active", columnList = "active")
 })
 public class BookingTaskModel {
-
-    @Id
-    @Column(name = "session_id", nullable = false)
+    
+    @Column(name = "session_id" , nullable = false)
     private String sessionId;
 
-    @Column(name = "user_id", nullable = false)
-    private Long userId;
+    @Column(name = "user_information",nullable = false)
+    private UserInformation userInfo;
+    
+    @Column(name = "session_information", nullable = false)
+    private SessionInformation sessionInfo;
 
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "dates", nullable = false, columnDefinition = "jsonb")
-    private List<String> dates;
+ 
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class SessionInformation {
+        @Id
+        @Column(name ="session_id")
+        private String sessionId;
 
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "times", nullable = false, columnDefinition = "jsonb")
-    private List<String> times;
+        @JdbcTypeCode(SqlTypes.JSON)
+        @Column(name = "dates", nullable = false, columnDefinition = "jsonb")
+        private List<String> dates;
+
+        @JdbcTypeCode(SqlTypes.JSON)
+        @Column(name = "times", nullable = false, columnDefinition = "jsonb")
+        private List<String> times;
+
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class UserInformation {
+
+       @Column(name = "user", nullable = false)
+       private UserModel userModel;
+    }
+
 
     @Builder.Default
     @Column(name = "paused", nullable = false)
@@ -61,9 +85,6 @@ public class BookingTaskModel {
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
-
-    @Column(name = "last_token_refreshed")
-    private LocalDateTime lastTokenRefreshed;
 
     @UpdateTimestamp
     @Column(name = "updated_at")

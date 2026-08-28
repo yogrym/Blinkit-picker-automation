@@ -423,18 +423,38 @@ public class AdminServices {
         UserModel user = userRepo.findById(userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "user not found"));
 
-        LocalDateTime currentPlanValidity = user.getExpiresAt();
+        // Default to now if expiresAt is somehow null
+        LocalDateTime currentPlanValidity = user.getExpiresAt() != null ? user.getExpiresAt() : LocalDateTime.now();
 
         if (planType != null) {
-
-            if (planType.equals("weekly")) {
+            String plan = planType.trim().toLowerCase();
+            
+            // Increasing
+            if (plan.equals("weekly")) {
                 user.setExpiresAt(currentPlanValidity.plusWeeks(1));
-            } else if (planType.equals("monthly")) {
+            } else if (plan.equals("monthly")) {
                 user.setExpiresAt(currentPlanValidity.plusMonths(1));
-            } else if (planType.equals("3 months") || planType.equals("3months")) {
+            } else if (plan.equals("3 months") || plan.equals("3months")) {
                 user.setExpiresAt(currentPlanValidity.plusMonths(3));
+            } 
+            // Decreasing
+            else if (plan.equals("-weekly") || plan.equals("decrease_weekly")) {
+                user.setExpiresAt(currentPlanValidity.minusWeeks(1));
+            } else if (plan.equals("-monthly") || plan.equals("decrease_monthly")) {
+                user.setExpiresAt(currentPlanValidity.minusMonths(1));
+            } else if (plan.equals("-3 months") || plan.equals("-3months") || plan.equals("decrease_3months")) {
+                user.setExpiresAt(currentPlanValidity.minusMonths(3));
             }
-
+            // Custom days (e.g., "15" or "-15")
+            else {
+                try {
+                    int customDays = Integer.parseInt(plan);
+                    user.setExpiresAt(currentPlanValidity.plusDays(customDays));
+                } catch (NumberFormatException e) {
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
+                        "Invalid plan type: '" + planType + "'. Must be 'weekly', 'monthly', '3months' (with or without '-' prefix) or an integer representing days (e.g., '15', '-5').");
+                }
+            }
         }
 
         userRepo.save(user);

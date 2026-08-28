@@ -13,6 +13,8 @@ import com.picker.BlinkitPicker.Dto.respons.SessionDateTimeRespons;
 import com.picker.BlinkitPicker.Dto.Logs;
 import com.picker.BlinkitPicker.Model.BookingTaskModel;
 import com.picker.BlinkitPicker.Model.UserModel;
+import com.picker.BlinkitPicker.Model.BookingTaskModel.SessionInformation;
+import com.picker.BlinkitPicker.Model.BookingTaskModel.UserInformation;
 import com.picker.BlinkitPicker.Model.UserHeaderModel;
 import com.picker.BlinkitPicker.Repository.BookingTaskRepo;
 import com.picker.BlinkitPicker.Repository.UserRepo;
@@ -79,9 +81,8 @@ public class BookingServices implements ApplicationRunner {
 
         bookingTaskRepo.save(BookingTaskModel.builder()
                 .sessionId(sessionId)
-                .userId(userId)
-                .dates(dates)
-                .times(times)
+                .sessionInfo(SessionInformation.builder().sessionId(sessionId).dates(dates).times(times).build())
+                .userInfo(UserInformation.builder().userModel(user).build())
                 .paused(false)
                 .active(true)
                 .firstDate(firstDate)
@@ -91,6 +92,24 @@ public class BookingServices implements ApplicationRunner {
         addWorkerToMemory(userId.toString(), sessionId, worker, false, firstDate, lastDate);
 
         return new WorkerList.BookingData(false, sessionId, firstDate, lastDate);
+    }
+
+
+     public WorkerList.BookingData startBookingFromSheduler(BookingTaskModel task, UserModel user) {
+        String sessionId = task.getSessionId();
+        List<String> dates = task.getSessionInfo().getDates();
+        List<String> times = task.getSessionInfo().getTimes();
+
+        BookingWorker worker = new BookingWorker(user.getId().toString(), dates, times, user, webClientServices, userRepo);
+
+        Boolean isPaused = task.getPaused() != null ? task.getPaused() : false;
+        if (isPaused) {
+            worker.pause();
+        }
+
+        addWorkerToMemory(user.getId().toString(), sessionId, worker, isPaused, task.getFirstDate(), task.getLastDate());
+
+        return new WorkerList.BookingData(isPaused, sessionId, task.getFirstDate(), task.getLastDate());
     }
 
     public List<WorkerList.BookingData> getBookingData(String token) {
@@ -139,6 +158,20 @@ public class BookingServices implements ApplicationRunner {
 
         return "OOPS! Session not found. It may have already been stopped or never existed.";
         
+    }
+
+     public String stopBookingFromSheduler(String sessionId, Long userId) {
+        if (workerMap.containsKey(userId.toString())) {
+            WorkerList userWorkers = workerMap.get(userId.toString());
+            BookingWorker worker = userWorkers.getWorker(sessionId);
+            if (worker != null) {
+                worker.stop();
+                userWorkers.removeWorker(sessionId);
+                return "Stopped " + sessionId;
+            }
+        } 
+
+        return "Stopped " + sessionId;
     }
 
     public String pauseBooking(String token, String sessionId) {
@@ -244,7 +277,7 @@ public class BookingServices implements ApplicationRunner {
         List<BookingTaskModel> activeTasks = bookingTaskRepo.findByActiveTrue();
         for (BookingTaskModel task : activeTasks) {
             try {
-                UserModel user = userRepo.findById(task.getUserId()).orElse(null);
+                UserModel user = userRepo.findById(task.getUserInfo().getUserModel().getId()).orElse(null);
                 if (user == null) {
                     System.out.println("[BookingServices] Skipping restored session " + task.getSessionId()
                             + ": user not found.");
@@ -252,9 +285,9 @@ public class BookingServices implements ApplicationRunner {
                 }
 
                 BookingWorker worker = new BookingWorker(
-                        task.getUserId().toString(),
-                        task.getDates(),
-                        task.getTimes(),
+                        task.getUserInfo().getUserModel().getId().toString(),
+                        task.getSessionInfo().getDates(),
+                        task.getSessionInfo().getTimes(),
                         user,
                         webClientServices,
                         userRepo);
@@ -264,7 +297,7 @@ public class BookingServices implements ApplicationRunner {
                 }
 
                 addWorkerToMemory(
-                        task.getUserId().toString(),
+                        task.getUserInfo().getUserModel().getId().toString(),
                         task.getSessionId(),
                         worker,
                         Boolean.TRUE.equals(task.getPaused()),
@@ -272,7 +305,7 @@ public class BookingServices implements ApplicationRunner {
                         task.getLastDate());
 
                 System.out.println("[BookingServices] Restored booking session " + task.getSessionId()
-                        + " for user " + task.getUserId());
+                        + " for user " + task.getUserInfo().getUserModel().getId());
             } catch (Exception e) {
                 System.out.println("[BookingServices] Failed to restore booking session " + task.getSessionId()
                         + ": " + e.getMessage());
@@ -338,12 +371,13 @@ public class BookingServices implements ApplicationRunner {
         
         bookingTaskRepo.findByUserIdAndSessionIdAndActiveTrue(userId, sessionId).ifPresent(task -> {
             boolean updated = false;
-            if (date != null && task.getDates() != null) {
-                task.getDates().remove(date);
+            if (date != null && task.getSessionInfo().getDates() != null) {
+                task.getSessionInfo().getDates().remove(date);
                 updated = true;
             }
-            if (time != null && task.getTimes() != null) {
-                task.getTimes().remove(time);
+
+            if (time != null && task.getSessionInfo().getTimes() != null) {
+                task.getSessionInfo().getTimes().remove(time);
                 updated = true;
             }
             if (updated) {
@@ -380,8 +414,8 @@ public class BookingServices implements ApplicationRunner {
                 .orElseThrow(() -> new RuntimeException("Session not found"));
 
         return SessionDateTimeRespons.builder()
-                .dates(task.getDates())
-                .times(task.getTimes())
+                .dates(task.getSessionInfo().getDates())
+                .times(task.getSessionInfo().getTimes())
                 .build();
     }
 
