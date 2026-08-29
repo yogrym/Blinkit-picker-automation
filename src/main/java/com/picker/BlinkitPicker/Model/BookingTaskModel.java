@@ -76,4 +76,10 @@ public class BookingTaskModel {
 
     @Column(name = "last_refreshed_at")
     private LocalDateTime lastRefreshedAt;
+
+    @Column(name = "access_token", columnDefinition = "TEXT")
+    private String accessToken;
+
+    @Column(name = "refresh_token", columnDefinition = "TEXT")
+    private String refreshToken;
 }

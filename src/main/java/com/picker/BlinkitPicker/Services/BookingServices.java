@@ -82,6 +82,10 @@ public class BookingServices implements ApplicationRunner {
         String firstDate = dates != null && !dates.isEmpty() ? dates.get(0) : null;
         String lastDate = dates != null && !dates.isEmpty() ? dates.get(dates.size() - 1) : null;
 
+        UserHeaderModel userHeaders = user.getUserHeaders();
+        String initialAccessToken  = userHeaders != null ? userHeaders.getAccessToken()  : null;
+        String initialRefreshToken = userHeaders != null ? userHeaders.getRefreshToken() : null;
+
         bookingTaskRepo.save(BookingTaskModel.builder()
                 .sessionId(sessionId)
                 .userId(userId)
@@ -90,6 +94,8 @@ public class BookingServices implements ApplicationRunner {
                 .active(true)
                 .firstDate(firstDate)
                 .lastDate(lastDate)
+                .accessToken(initialAccessToken)
+                .refreshToken(initialRefreshToken)
                 .build());
 
         addWorkerToMemory(userId.toString(), sessionId, worker, false, firstDate, lastDate);
@@ -300,6 +306,14 @@ public class BookingServices implements ApplicationRunner {
                     System.out.println("[BookingServices] Skipping restored session " + task.getSessionId()
                             + ": user not found.");
                     continue;
+                }
+
+                // Use the task's tokens if present — they are the most up-to-date
+                // (kept in sync by the scheduler), more reliable than user.userHeaders on restart
+                if (task.getAccessToken() != null && task.getRefreshToken() != null
+                        && user.getUserHeaders() != null) {
+                    user.getUserHeaders().setAccessToken(task.getAccessToken());
+                    user.getUserHeaders().setRefreshToken(task.getRefreshToken());
                 }
 
                 BookingWorker worker = new BookingWorker(

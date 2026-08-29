@@ -120,8 +120,10 @@ public class SchedulerServices {
                             }
                         }
 
-                        // Update lastRefreshedAt on the task record in DB
+                        // Update lastRefreshedAt and the latest tokens on the task record in DB
                         task.setLastRefreshedAt(LocalDateTime.now());
+                        task.setAccessToken(worker.getAccessToken());
+                        task.setRefreshToken(worker.getRefreshToken());
                         bookingTaskRepo.save(task);
                         logger.info("[Scheduler] Token refresh complete for session {} user {}.", sessionId, userId);
 
