@@ -73,4 +73,7 @@ public class BookingTaskModel {
     @UpdateTimestamp
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
+
+    @Column(name = "last_refreshed_at")
+    private LocalDateTime lastRefreshedAt;
 }

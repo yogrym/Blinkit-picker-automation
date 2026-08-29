@@ -25,9 +25,13 @@ import reactor.core.publisher.Mono;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Service
 public class BookingServices implements ApplicationRunner {
+
+    private static final Logger logger = LoggerFactory.getLogger(BookingServices.class);
 
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
 
@@ -160,16 +164,20 @@ public class BookingServices implements ApplicationRunner {
     }
 
      public String stopBookingFromSheduler(String sessionId, Long userId) {
+        // 1. Stop thread and remove from memory
         if (workerMap.containsKey(userId.toString())) {
             WorkerList userWorkers = workerMap.get(userId.toString());
             BookingWorker worker = userWorkers.getWorker(sessionId);
             if (worker != null) {
                 worker.stop();
                 userWorkers.removeWorker(sessionId);
-                return "Stopped " + sessionId;
             }
-        } 
+        }
+        // 2. Delete from DB so ApplicationRunner won't restore this session on next restart
+        bookingTaskRepo.findByUserIdAndSessionIdAndActiveTrue(userId, sessionId)
+                .ifPresent(bookingTaskRepo::delete);
 
+        logger.info("[BookingServices] Session {} for user {} fully cleaned up (memory + DB).", sessionId, userId);
         return "Stopped " + sessionId;
     }
 
@@ -238,6 +246,17 @@ public class BookingServices implements ApplicationRunner {
 
     public ConcurrentHashMap<String, WorkerList> getWorkerMap() {
         return workerMap;
+    }
+
+    /**
+     * Returns the live BookingWorker for the given user/session, or null if not found.
+     * Used by the scheduler to refresh tokens in-thread without restarting the booking.
+     */
+    public BookingWorker getWorkerForSession(Long userId, String sessionId) {
+        if (userId == null || sessionId == null) return null;
+        WorkerList userWorkers = workerMap.get(userId.toString());
+        if (userWorkers == null) return null;
+        return userWorkers.getWorker(sessionId);
     }
 
     public LogsResponse getSessionLogs(String token, String sessionId, int afterIndex) {

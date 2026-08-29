@@ -63,6 +63,7 @@ public class BookingWorker implements Runnable {
 
     private String accessToken;
     private String refreshToken;
+    private volatile java.time.LocalDateTime lastRefreshedAt;
 
     public BookingWorker(String userId, List<String> dates, List<String> times, UserModel user,
             WebClientServices webClientServices, UserRepo userRepo) {
@@ -91,7 +92,6 @@ public class BookingWorker implements Runnable {
 
     public Boolean pause() {
         this.isPaused = true;
-        saveUserHeaders();
         return true;
     }
 
@@ -102,7 +102,6 @@ public class BookingWorker implements Runnable {
 
     public Boolean stop() {
         this.isStop = true;
-        saveUserHeaders();
         return true;
     }
 
@@ -233,6 +232,61 @@ public class BookingWorker implements Runnable {
         return refreshAccessToken(this.refreshToken, this.headers);
     }
 
+    /**
+     * Called by the scheduler to refresh tokens directly inside the live booking thread.
+     * Updates in-thread accessToken, refreshToken, headers, and lastRefreshedAt.
+     * The scheduler is responsible for persisting the new tokens to DB.
+     * Never throws — returns false on any failure.
+     */
+    public boolean refreshTokensFromScheduler(WebClientServices webClientServices) {
+        try {
+            if (this.headers == null || this.refreshToken == null) {
+                logger.warn("[BookingWorker] Cannot refresh: headers or refreshToken is null for user {}",
+                        this.headers != null ? this.headers.getEmployeeName() : "unknown");
+                return false;
+            }
+
+            MultiValueMap<String, String> formData = new LinkedMultiValueMap<>();
+            formData.add("refresh_token", this.refreshToken);
+
+            CognitoRefreshTokenRespons response = webClientServices.refreshToken(formData, this.headers);
+
+            if (response == null || !Boolean.TRUE.equals(response.getSuccess())) {
+                logger.warn("[BookingWorker] Scheduler token refresh failed for user {}",
+                        this.headers.getEmployeeName());
+                addLog("Scheduled session refresh failed.");
+                return false;
+            }
+
+            String newAccessToken  = response.getAccessToken();
+            String newRefreshToken = response.getRefreshToken();
+
+            if (newAccessToken == null || newRefreshToken == null) {
+                logger.warn("[BookingWorker] Scheduler received null tokens for user {}",
+                        this.headers.getEmployeeName());
+                addLog("Scheduled session refresh returned empty tokens.");
+                return false;
+            }
+
+            // Update in-thread state immediately — the running loop uses these next iteration
+            this.accessToken     = newAccessToken;
+            this.refreshToken    = newRefreshToken;
+            this.headers.setAccessToken(newAccessToken);
+            this.headers.setRefreshToken(newRefreshToken);
+            this.lastRefreshedAt = java.time.LocalDateTime.now();
+
+            logger.info("[BookingWorker] Tokens refreshed in-thread for user {}", this.headers.getEmployeeName());
+            addLog("Your session tokens have been refreshed by the scheduler.");
+            return true;
+
+        } catch (Exception e) {
+            logger.error("[BookingWorker] Error during scheduler token refresh for user {}: {}",
+                    this.headers != null ? this.headers.getEmployeeName() : "unknown", e.getMessage(), e);
+            addLog("Scheduled session refresh encountered an error.");
+            return false;
+        }
+    }
+
     private boolean refreshAccessToken(String refreshToken, UserHeaderModel headers) {
         try {
 
@@ -252,7 +306,6 @@ public class BookingWorker implements Runnable {
                 headers.setRefreshToken(response.getRefreshToken());
                 this.accessToken = response.getAccessToken();
                 this.refreshToken = response.getRefreshToken();
-                saveUserHeaders();
                 logger.info("User session has been renewed  {}: ", headers.getEmployeeName());
                 addLog("Your session has been renewed");
                 return true;
