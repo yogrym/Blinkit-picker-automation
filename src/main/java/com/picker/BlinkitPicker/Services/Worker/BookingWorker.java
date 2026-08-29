@@ -65,6 +65,26 @@ public class BookingWorker implements Runnable {
     /** Serializes concurrent token-refresh calls (scheduler vs. worker) */
     private final Object tokenLock = new Object();
 
+    /**
+     * Called immediately after a successful in-thread reactive token refresh
+     * (i.e. when a 401/403 was caught and a new token pair was obtained).
+     *
+     * <p>Wired by {@code BookingServices} as:
+     * <pre>
+     *   (newAccessToken, newRefreshToken) ->
+     *       bookingServices.propagateTokensToAllUserSessions(userId, newAccessToken, newRefreshToken)
+     * </pre>
+     *
+     * <p>This ensures that the moment <em>any</em> worker refreshes its token,
+     * every other live session of the same user is immediately updated with the
+     * same token pair — preventing the other sessions from hitting a cascade of
+     * 401s with the now-revoked old token.
+     *
+     * <p>NOT called from {@link #refreshTokensFromScheduler} because the scheduler
+     * already calls {@code propagateTokensToAllUserSessions} directly.
+     */
+    private java.util.function.BiConsumer<String, String> onTokenRefreshed;
+
     public BookingWorker(String userId, List<String> dates, List<String> times, UserModel user,
             WebClientServices webClientServices, UserRepo userRepo) {
         this.dates = dates;
@@ -289,6 +309,9 @@ public class BookingWorker implements Runnable {
     }
 
     private boolean refreshAccessToken(String refreshToken, UserHeaderModel headers) {
+        String newAccessToken  = null;
+        String newRefreshToken = null;
+
         synchronized (tokenLock) {
             try {
 
@@ -309,9 +332,11 @@ public class BookingWorker implements Runnable {
                     this.refreshToken = response.getRefreshToken();
                     headers.setAccessToken(this.accessToken);
                     headers.setRefreshToken(this.refreshToken);
+                    this.lastRefreshedAt = java.time.LocalDateTime.now();
+                    newAccessToken  = this.accessToken;
+                    newRefreshToken = this.refreshToken;
                     logger.info("User session has been renewed  {}: ", headers.getEmployeeName());
-                    addLog("Your session has been renewed");
-                    return true;
+                    addLog("Your session has been renewed. Propagating to all your sessions...");
                 } else {
                     return false;
                 }
@@ -328,7 +353,31 @@ public class BookingWorker implements Runnable {
                 return false;
             }
         }
+
+        // ── Fire propagation callback OUTSIDE the lock ────────────────────────────
+        // Propagates the new token pair to every other live session of this user
+        // (in-memory workers + DB task rows) so they don't hit 401 with the now-
+        // revoked old token. The callback is wired by BookingServices on construction.
+        if (newAccessToken != null && onTokenRefreshed != null) {
+            try {
+                onTokenRefreshed.accept(newAccessToken, newRefreshToken);
+                logger.info("[TOKEN-ROTATE] Cross-session token propagation triggered for user {}.",
+                        headers.getEmployeeName());
+            } catch (Exception e) {
+                // Never let propagation failure block the current booking thread
+                logger.error("[TOKEN-ROTATE] Cross-session propagation failed for user {}: {}",
+                        headers.getEmployeeName(), e.getMessage());
+            }
+        }
+
+        return true;
     }
+
+    /** Wired by BookingServices after construction. */
+    public void setOnTokenRefreshed(java.util.function.BiConsumer<String, String> callback) {
+        this.onTokenRefreshed = callback;
+    }
+
 
    
     private Map<String, String> filterSlotId(FetchSlotsResponse response, List<String> times) {
@@ -431,8 +480,36 @@ public class BookingWorker implements Runnable {
 
     public List<Logs> getLogs() {
         synchronized (inMemoryUserLogs) {
-            return new ArrayList<>(inMemoryUserLogs);
+            // ── Pinned log: always the first entry, never deleted ────────────────
+            // Generated dynamically from the current live tokens so it is always
+            // accurate — even after a scheduler refresh or an OTP re-login.
+            String pinnedEntry = buildPinnedTokenLog();
+
+            List<Logs> result = new ArrayList<>();
+            result.add(Logs.builder().logs(List.of(pinnedEntry)).build());
+            result.addAll(inMemoryUserLogs);
+            return result;
         }
+    }
+
+    /**
+     * Builds the pinned log line that is prepended to every {@link #getLogs()} call.
+     * Shows truncated access- and refresh-token values so the user can verify which
+     * credential pair is active without exposing the full token string.
+     *
+     * <p>Format:  {@code [SESSION] Access: abc12...ef34 | Refresh: xyz98...cd12}
+     */
+    private String buildPinnedTokenLog() {
+        String at = truncateToken(this.accessToken);
+        String rt = truncateToken(this.refreshToken);
+        return "[SESSION] Access: " + at + " | Refresh: " + rt;
+    }
+
+    /** Returns {@code first5...last4} of a token, or {@code "(none)"} if null/blank. */
+    private static String truncateToken(String token) {
+        if (token == null || token.isBlank()) return "(none)";
+        if (token.length() <= 12) return token; // short enough to show in full
+        return token.substring(0, 5) + "..." + token.substring(token.length() - 4);
     }
     
 

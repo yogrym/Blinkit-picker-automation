@@ -78,6 +78,10 @@ public class BookingServices implements ApplicationRunner {
         String sessionId = SessionIdGenerator.generateSessionId();
 
         BookingWorker worker = new BookingWorker(userId.toString(), dates, times, user, webClientServices, userRepo);
+        // Wire cross-session token propagation: if this worker hits a 401 and refreshes,
+        // all other live sessions of the same user are immediately updated too.
+        final Long finalUserId = userId;
+        worker.setOnTokenRefreshed((at, rt) -> propagateTokensToAllUserSessions(finalUserId, at, rt));
 
         String firstDate = dates != null && !dates.isEmpty() ? dates.get(0) : null;
         String lastDate = dates != null && !dates.isEmpty() ? dates.get(dates.size() - 1) : null;
@@ -110,6 +114,9 @@ public class BookingServices implements ApplicationRunner {
         List<String> times = task.getSessionInfo().getTimes();
 
         BookingWorker worker = new BookingWorker(user.getId().toString(), dates, times, user, webClientServices, userRepo);
+        // Wire cross-session token propagation
+        final Long userId = user.getId();
+        worker.setOnTokenRefreshed((at, rt) -> propagateTokensToAllUserSessions(userId, at, rt));
 
         Boolean isPaused = task.getPaused() != null ? task.getPaused() : false;
         if (isPaused) {
@@ -265,6 +272,77 @@ public class BookingServices implements ApplicationRunner {
         return userWorkers.getWorker(sessionId);
     }
 
+    /**
+     * Propagates freshly obtained tokens to EVERY active session of a user — both the
+     * in-memory BookingWorkers and the persisted BookingTaskModel rows.
+     *
+     * <p>Rules:
+     * <ul>
+     *   <li>Paused sessions stay paused — only tokens are updated.</li>
+     *   <li>Active sessions stay active — only tokens are updated.</li>
+     *   <li>lastRefreshedAt is stamped on all DB tasks so the scheduler does not
+     *       immediately re-refresh these sessions in the same cycle.</li>
+     * </ul>
+     *
+     * <p>Called from two places:
+     * <ol>
+     *   <li>{@code AuthServices.verifyOtp()} — when the user logs in with a fresh OTP.</li>
+     *   <li>{@code SchedulerServices.proactivelyRefreshTokens()} — after the Cognito
+     *       token-refresh call succeeds for this user.</li>
+     * </ol>
+     *
+     * @param userId        the internal DB user ID
+     * @param accessToken   the new Blinkit access token
+     * @param refreshToken  the new Blinkit refresh token
+     */
+    public void propagateTokensToAllUserSessions(Long userId, String accessToken, String refreshToken) {
+        if (userId == null || accessToken == null || refreshToken == null) {
+            logger.warn("[BookingServices] propagateTokensToAllUserSessions called with null args for userId={}", userId);
+            return;
+        }
+
+        java.time.LocalDateTime now = java.time.LocalDateTime.now();
+
+        // ── 1. Update every live in-memory worker for this user ──────────────────
+        WorkerList userWorkers = workerMap.get(userId.toString());
+        if (userWorkers != null) {
+            userWorkers.getAllWorkers().forEach((sessionId, worker) -> {
+                try {
+                    worker.setAccessToken(accessToken);
+                    worker.setRefreshToken(refreshToken);
+                    if (worker.getHeaders() != null) {
+                        worker.getHeaders().setAccessToken(accessToken);
+                        worker.getHeaders().setRefreshToken(refreshToken);
+                    }
+                    worker.setLastRefreshedAt(now);
+                    logger.info("[BookingServices] Token updated in-memory for user {} session {}", userId, sessionId);
+                } catch (Exception e) {
+                    logger.error("[BookingServices] Failed to update in-memory worker for session {}: {}", sessionId, e.getMessage());
+                }
+            });
+        } else {
+            logger.debug("[BookingServices] No in-memory workers found for user {} — DB-only update.", userId);
+        }
+
+        // ── 2. Update every active DB task row for this user ─────────────────────
+        List<BookingTaskModel> userTasks = bookingTaskRepo.findByUserIdAndActiveTrue(userId);
+        if (userTasks != null && !userTasks.isEmpty()) {
+            for (BookingTaskModel task : userTasks) {
+                try {
+                    task.setAccessToken(accessToken);
+                    task.setRefreshToken(refreshToken);
+                    task.setLastRefreshedAt(now);
+                    bookingTaskRepo.save(task);
+                    logger.info("[BookingServices] Token persisted to DB for user {} session {}", userId, task.getSessionId());
+                } catch (Exception e) {
+                    logger.error("[BookingServices] Failed to persist tokens for session {}: {}", task.getSessionId(), e.getMessage());
+                }
+            }
+        } else {
+            logger.debug("[BookingServices] No active DB tasks found for user {} — skipping DB token update.", userId);
+        }
+    }
+
     public LogsResponse getSessionLogs(String token, String sessionId, int afterIndex) {
         Long userId = jwtServices.extractUserId(token);
         if (userId != null && workerMap.containsKey(userId.toString())) {
@@ -323,6 +401,9 @@ public class BookingServices implements ApplicationRunner {
                         user,
                         webClientServices,
                         userRepo);
+                // Wire cross-session token propagation for restored sessions too
+                final Long restoredUserId = task.getUserId();
+                worker.setOnTokenRefreshed((at, rt) -> propagateTokensToAllUserSessions(restoredUserId, at, rt));
 
                 if (Boolean.TRUE.equals(task.getPaused())) {
                     worker.pause();

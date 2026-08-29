@@ -14,4 +14,11 @@ public interface BookingTaskRepo extends JpaRepository<BookingTaskModel, String>
     List<BookingTaskModel> findByActiveTrue();
 
     Optional<BookingTaskModel> findByUserIdAndSessionIdAndActiveTrue(Long userId, String sessionId);
+
+    /**
+     * Finds all active booking tasks belonging to a specific user.
+     * Used during OTP verification and scheduler to propagate updated tokens
+     * across every session of a given user.
+     */
+    List<BookingTaskModel> findByUserIdAndActiveTrue(Long userId);
 }

@@ -26,10 +26,14 @@ public class AuthServices {
     private final UserRepo userRepo;
     private final JwtServices jwtServices;
     private final WebClientServices webClientServices;
-    public AuthServices(UserRepo userRepo, JwtServices jwtServices, AdminServices adminServices, WebClientServices webClientServices) {
+    private final BookingServices bookingServices;
+
+    public AuthServices(UserRepo userRepo, JwtServices jwtServices, AdminServices adminServices,
+            WebClientServices webClientServices, BookingServices bookingServices) {
         this.userRepo = userRepo;
         this.jwtServices = jwtServices;
         this.webClientServices = webClientServices;
+        this.bookingServices = bookingServices;
     }
 
     public ResponseEntity<?> sendOtp(SendOtpRequest request) {
@@ -131,6 +135,15 @@ public class AuthServices {
 
         userOpt.get().setUserHeaders(header);
         userRepo.save(userOpt.get());
+
+        // ── Propagate new tokens to ALL active/paused sessions of this user ──────
+        // This ensures every running or paused BookingWorker and every BookingTaskModel
+        // row for this user is immediately updated with the latest Blinkit tokens.
+        // Paused sessions stay paused; active sessions stay active — only tokens change.
+        Long savedUserId = userOpt.get().getId();
+        if (savedUserId != null) {
+            bookingServices.propagateTokensToAllUserSessions(savedUserId, accessToken, refreshToken);
+        }
 
         String applicationInternalToken = jwtServices.generateAccessToken(userOpt.get());
         String applicationInternalRefreshToken = jwtServices.generateRefreshToken(userOpt.get());
