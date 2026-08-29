@@ -21,9 +21,6 @@ import com.picker.BlinkitPicker.Model.UserModel;
 import com.picker.BlinkitPicker.Repository.UserRepo;
 import com.picker.BlinkitPicker.Services.WebClientServices;
 import com.picker.BlinkitPicker.Util.DateToUtc;
-import com.picker.BlinkitPicker.Util.GenerateCookie;
-
-
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
@@ -61,9 +58,12 @@ public class BookingWorker implements Runnable {
     private long bookedSlotsInSession = 0L;
     private boolean bookedSlotsSaved = false;
 
-    private String accessToken;
-    private String refreshToken;
+    private volatile String accessToken;
+    private volatile String refreshToken;
     private volatile java.time.LocalDateTime lastRefreshedAt;
+
+    /** Serializes concurrent token-refresh calls (scheduler vs. worker) */
+    private final Object tokenLock = new Object();
 
     public BookingWorker(String userId, List<String> dates, List<String> times, UserModel user,
             WebClientServices webClientServices, UserRepo userRepo) {
@@ -211,9 +211,8 @@ public class BookingWorker implements Runnable {
 
             addLog("Session expired while processing your booking. Refreshing the session.");
 
-            if (!refreshAccessToken(refreshToken,headers)) {
-                this.pause();
-                addLog("Automatic session refresh failed. Booking is now paused. Please login again to resume.");
+            if (!refreshAccessToken(refreshToken, headers)) {
+                addLog("Session refresh failed. Retrying on next cycle.");
                 throw e;
             }
 
@@ -239,91 +238,95 @@ public class BookingWorker implements Runnable {
      * Never throws — returns false on any failure.
      */
     public boolean refreshTokensFromScheduler(WebClientServices webClientServices) {
-        try {
-            if (this.headers == null || this.refreshToken == null) {
-                logger.warn("[BookingWorker] Cannot refresh: headers or refreshToken is null for user {}",
-                        this.headers != null ? this.headers.getEmployeeName() : "unknown");
+        synchronized (tokenLock) {
+            try {
+                if (this.headers == null || this.refreshToken == null) {
+                    logger.warn("[BookingWorker] Cannot refresh: headers or refreshToken is null for user {}",
+                            this.headers != null ? this.headers.getEmployeeName() : "unknown");
+                    return false;
+                }
+
+                MultiValueMap<String, String> formData = new LinkedMultiValueMap<>();
+                formData.add("refresh_token", this.refreshToken);
+
+                CognitoRefreshTokenRespons response = webClientServices.refreshToken(formData, this.headers);
+
+                if (response == null || !Boolean.TRUE.equals(response.getSuccess())) {
+                    logger.warn("[BookingWorker] Scheduler token refresh failed for user {}",
+                            this.headers.getEmployeeName());
+                    addLog("Scheduled session refresh failed.");
+                    return false;
+                }
+
+                String newAccessToken  = response.getAccessToken();
+                String newRefreshToken = response.getRefreshToken();
+
+                if (newAccessToken == null || newRefreshToken == null) {
+                    logger.warn("[BookingWorker] Scheduler received null tokens for user {}",
+                            this.headers.getEmployeeName());
+                    addLog("Scheduled session refresh returned empty tokens.");
+                    return false;
+                }
+
+                // Update in-thread state atomically — the running loop uses these next iteration
+                this.accessToken     = newAccessToken;
+                this.refreshToken    = newRefreshToken;
+                this.headers.setAccessToken(newAccessToken);
+                this.headers.setRefreshToken(newRefreshToken);
+                this.lastRefreshedAt = java.time.LocalDateTime.now();
+
+                logger.info("[BookingWorker] Tokens refreshed in-thread for user {}", this.headers.getEmployeeName());
+                addLog("Your session tokens have been refreshed by the scheduler.");
+                return true;
+
+            } catch (Exception e) {
+                logger.error("[BookingWorker] Error during scheduler token refresh for user {}: {}",
+                        this.headers != null ? this.headers.getEmployeeName() : "unknown", e.getMessage(), e);
+                addLog("Scheduled session refresh encountered an error.");
                 return false;
             }
-
-            MultiValueMap<String, String> formData = new LinkedMultiValueMap<>();
-            formData.add("refresh_token", this.refreshToken);
-
-            CognitoRefreshTokenRespons response = webClientServices.refreshToken(formData, this.headers);
-
-            if (response == null || !Boolean.TRUE.equals(response.getSuccess())) {
-                logger.warn("[BookingWorker] Scheduler token refresh failed for user {}",
-                        this.headers.getEmployeeName());
-                addLog("Scheduled session refresh failed.");
-                return false;
-            }
-
-            String newAccessToken  = response.getAccessToken();
-            String newRefreshToken = response.getRefreshToken();
-
-            if (newAccessToken == null || newRefreshToken == null) {
-                logger.warn("[BookingWorker] Scheduler received null tokens for user {}",
-                        this.headers.getEmployeeName());
-                addLog("Scheduled session refresh returned empty tokens.");
-                return false;
-            }
-
-            // Update in-thread state immediately — the running loop uses these next iteration
-            this.accessToken     = newAccessToken;
-            this.refreshToken    = newRefreshToken;
-            this.headers.setAccessToken(newAccessToken);
-            this.headers.setRefreshToken(newRefreshToken);
-            this.lastRefreshedAt = java.time.LocalDateTime.now();
-
-            logger.info("[BookingWorker] Tokens refreshed in-thread for user {}", this.headers.getEmployeeName());
-            addLog("Your session tokens have been refreshed by the scheduler.");
-            return true;
-
-        } catch (Exception e) {
-            logger.error("[BookingWorker] Error during scheduler token refresh for user {}: {}",
-                    this.headers != null ? this.headers.getEmployeeName() : "unknown", e.getMessage(), e);
-            addLog("Scheduled session refresh encountered an error.");
-            return false;
         }
     }
 
     private boolean refreshAccessToken(String refreshToken, UserHeaderModel headers) {
-        try {
+        synchronized (tokenLock) {
+            try {
 
-            MultiValueMap<String,String> formData = new LinkedMultiValueMap<>();
-            formData.add("refresh_token", refreshToken);
+                MultiValueMap<String,String> formData = new LinkedMultiValueMap<>();
+                formData.add("refresh_token", refreshToken);
 
-            CognitoRefreshTokenRespons response = webClientServices.refreshToken(formData,headers);
+                CognitoRefreshTokenRespons response = webClientServices.refreshToken(formData, headers);
 
-            if (!response.getSuccess()) {
-                logger.error("Cannot refresh AccessToken for user {}: ", headers.getEmployeeName());
+                if (!response.getSuccess()) {
+                    logger.error("Cannot refresh AccessToken for user {}: ", headers.getEmployeeName());
+                    addLog("Session refresh failed.");
+                    return false;
+                }
+
+                if (response.getAccessToken() != null && response.getRefreshToken() != null) {
+                    // Update atomically under the lock
+                    this.accessToken = response.getAccessToken();
+                    this.refreshToken = response.getRefreshToken();
+                    headers.setAccessToken(this.accessToken);
+                    headers.setRefreshToken(this.refreshToken);
+                    logger.info("User session has been renewed  {}: ", headers.getEmployeeName());
+                    addLog("Your session has been renewed");
+                    return true;
+                } else {
+                    return false;
+                }
+
+            } catch (WebClientResponseException e) {
+                String responseBody = e.getResponseBodyAsString();
+                logger.error("[TOKEN-ROTATE] Blinkit responded with HTTP {} for user {}. Response body: {}",
+                        e.getStatusCode().value(), headers.getEmployeeName(), responseBody);
+                addLog("Session refresh failed.");
+                return false;
+            } catch (Throwable e) {
+                logger.error("[TOKEN-ROTATE] Unexpected error refreshing token for {}: {}", headers.getEmployeeName(), e.toString());
                 addLog("Session refresh failed.");
                 return false;
             }
-
-            if (response.getAccessToken() != null && response.getRefreshToken()!=null) {
-                headers.setAccessToken(response.getAccessToken());
-                headers.setRefreshToken(response.getRefreshToken());
-                this.accessToken = response.getAccessToken();
-                this.refreshToken = response.getRefreshToken();
-                logger.info("User session has been renewed  {}: ", headers.getEmployeeName());
-                addLog("Your session has been renewed");
-                return true;
-            } else{
-                return false;
-            }
-
-           
-        } catch (WebClientResponseException e) {
-            String responseBody = e.getResponseBodyAsString();
-            logger.error("[TOKEN-ROTATE] Blinkit responded with HTTP {} for user {}. Response body: {}",
-                    e.getStatusCode().value(), headers.getEmployeeName(), responseBody);
-            addLog("Session refresh failed.");
-            return false;
-        } catch (Throwable e) {
-            logger.error("[TOKEN-ROTATE] Unexpected error refreshing token for {}: {}", headers.getEmployeeName(), e.toString());
-            addLog("Session refresh failed.");
-            return false;
         }
     }
 
