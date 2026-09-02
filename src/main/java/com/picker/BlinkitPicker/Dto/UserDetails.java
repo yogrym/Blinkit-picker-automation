@@ -34,6 +34,9 @@ public class UserDetails {
     public static class UserData {
         @JsonProperty("store_id")
         private String storeId;
+        
+        @JsonProperty("store_name")
+        private String storeName;
 
         @JsonProperty("employee_name")
         private String employeeName;

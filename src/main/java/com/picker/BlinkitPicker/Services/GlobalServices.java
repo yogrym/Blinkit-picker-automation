@@ -106,6 +106,7 @@ public class GlobalServices {
 
         UserDetails.UserData userData = UserDetails.UserData.builder()
                 .storeId(storeId)
+                .storeName(headers.getSiteName())
                 .employeeName(employeeName)
                 .employeeId(employeeId)
                 .totalBookedSlots(user.getTotalBookedSlots() != null ? user.getTotalBookedSlots().intValue() : 0)
