@@ -22,4 +22,17 @@ public class UserController {
         }
         return globalServices.getUserDetails(authorizationHeader);
     }
+
+   /*  @GetMapping("/user-details/slot-information")
+    public ResponseEntity<?> getSlotInformation(
+            @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
+        if (authorizationHeader == null || authorizationHeader.isBlank()) {
+            return ResponseEntity.status(403).body("");
+        }
+        return globalServices.getSlotInformation(authorizationHeader);
+    } */
+   
+
+
+    
 }

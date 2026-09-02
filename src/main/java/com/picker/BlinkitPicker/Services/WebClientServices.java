@@ -15,8 +15,10 @@ import org.springframework.util.MultiValueMap;
 import org.springframework.web.reactive.function.BodyInserters;
 
 import com.picker.BlinkitPicker.Cache.AppCahe;
+import com.picker.BlinkitPicker.Dto.SlotInformation;
 import com.picker.BlinkitPicker.Dto.Internal.BookSlotsRequest;
 import com.picker.BlinkitPicker.Dto.Internal.ViewAvailaibleSlotsRequest;
+import com.picker.BlinkitPicker.Dto.request.CheckAvailableSlotsRequest;
 import com.picker.BlinkitPicker.Dto.request.CognitoRefreshTokenRequest;
 import com.picker.BlinkitPicker.Dto.request.FetchSlotsRequest;
 import com.picker.BlinkitPicker.Dto.request.LoginRequest;
@@ -54,6 +56,9 @@ public class WebClientServices {
         @Autowired
         @Qualifier("blinkitWebClient")
         private WebClient blinkClient;
+
+
+        private String AVL_SLOTS_URL = "https://storeops.blinkit.com/api/v1/slots/available";
 
     
 
@@ -216,6 +221,65 @@ public class WebClientServices {
                         throw new CognitoException(503, "Unable to connect to your storeops" + e.getMessage());
                 }
         }
+
+
+
+
+
+
+     public SlotInformation getAvailableSlots(CheckAvailableSlotsRequest request, UserHeaderModel headers,String accessToken) {
+               
+                String xTrace = GenerateCookie.generateRequestId();// for all kind of the requestid we will use it
+
+                String sessionToken = GenerateCookie.generateSessionToken(); 
+
+                try {
+                        return webClient.post()
+                                        .uri(AVL_SLOTS_URL)
+                                         .headers(httpHeaders -> {
+                                                httpHeaders.set("Content-Type", "application/json; charset=UTF-8");
+                                                httpHeaders.set("x-device-manufacturer", headers.getDeviceManufacturer());
+                                                httpHeaders.set("x-app-version-code", headers.getAppVersionCode());
+                                                httpHeaders.set("x-supply-apps-kit-version", headers.getSupplyAppsKitVersion());
+                                                httpHeaders.set("version_name", headers.getVersionName());
+                                                httpHeaders.set("app_client", headers.getAppClient());
+                                                httpHeaders.set("x-device-id", headers.getXDeviceId());
+                                                httpHeaders.set("version_code", headers.getVersionCode());
+                                                httpHeaders.set("app_client", headers.getAppClient());
+                                                httpHeaders.set("x-client-name", headers.getClientName());
+                                                httpHeaders.set("model", headers.getModel());
+                                                httpHeaders.set("x-device-hardware-type", headers.getDeviceHardwareType());
+                                                httpHeaders.set("x-app-version", headers.getAppVersion());
+                                                httpHeaders.set("version", headers.getVersion());
+                                                httpHeaders.set("x-app-theme", headers.getAppTheme());
+                                                httpHeaders.set("x-app-appearance", headers.getAppAppearance());
+                                                httpHeaders.set("user-agent", safe(headers.getUserAgent()));
+                                                httpHeaders.set("x-system-appearance", safe(headers.getAppAppearance()));
+                                                httpHeaders.set("x-system-theme", safe(headers.getAppTheme()));
+                                                httpHeaders.set("x-lat", safe(headers.getXLat()));
+                                                httpHeaders.set("x-long", safe(headers.getXLong()));
+                                                httpHeaders.set("accept", "application/json");
+                                                httpHeaders.set("x-api-key", "b30153b3-a5f8-4118-9af9-43d05487c1b3");
+                                                httpHeaders.set("x-grace-trace-id", xTrace);
+                                                httpHeaders.set("requestid", xTrace);
+                                                httpHeaders.set("x-request-id", xTrace);
+                                                httpHeaders.set("session-token",sessionToken);
+                                                httpHeaders.set("cookie", GenerateCookie.generateCfBmCookie());
+                                                httpHeaders.set("x-app-locale", safe(headers.getAppLocale()));
+                                                httpHeaders.set("access_token", accessToken);
+                                                httpHeaders.set("priority", safe(headers.getPriority()));
+                                        })
+                                        .bodyValue(request)
+                                        .retrieve()
+                                        .bodyToMono(SlotInformation.class)
+                                        .block();
+                } catch (WebClientResponseException e) {
+                        throw new CognitoException(e.getStatusCode().value(), e.getResponseBodyAsString());
+                } catch (WebClientRequestException e) {
+                        throw new CognitoException(503, "unable to get slots information" + e.getMessage());
+                }
+        }
+
 
 
       public CognitoRefreshTokenRespons refreshToken(MultiValueMap<String,String> formData , UserHeaderModel headers) {

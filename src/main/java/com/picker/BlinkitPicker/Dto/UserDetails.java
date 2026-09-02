@@ -3,6 +3,7 @@ package com.picker.BlinkitPicker.Dto;
 import java.time.LocalDateTime;
 import java.util.List;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.picker.BlinkitPicker.Enums.RoleEnum;
 
@@ -19,6 +20,12 @@ public class UserDetails {
 
     @JsonProperty("user_details")
     private UserData info;
+    
+    @JsonProperty("slot_information")
+    private SlotInformation slotInformation;
+
+    
+
 
     @Data
     @NoArgsConstructor

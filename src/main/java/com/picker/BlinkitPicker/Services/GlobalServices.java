@@ -11,8 +11,10 @@ import org.springframework.context.annotation.Lazy;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 
+import com.picker.BlinkitPicker.Dto.SlotInformation;
 import com.picker.BlinkitPicker.Dto.UserDetails;
 import com.picker.BlinkitPicker.Dto.WorkerList;
+import com.picker.BlinkitPicker.Dto.request.CheckAvailableSlotsRequest;
 import com.picker.BlinkitPicker.Model.UserHeaderModel;
 import com.picker.BlinkitPicker.Model.UserModel;
 import com.picker.BlinkitPicker.Repository.UserRepo;
@@ -27,6 +29,9 @@ public class GlobalServices {
 
     @Autowired
     private JwtServices jwtServices;
+
+    @Autowired
+    private WebClientServices webClientServices;
 
     @Autowired
     @Lazy
@@ -89,6 +94,16 @@ public class GlobalServices {
             }
         }
 
+        SlotInformation slotInformation = webClientServices.getAvailableSlots(CheckAvailableSlotsRequest.builder()
+                .locationInfo(CheckAvailableSlotsRequest.LocationInfo.builder()
+                        .latitude(Double.valueOf(headers.getXLat()))
+                        .longitude(Double.valueOf(headers.getXLong()))
+                        .placeId("")
+                        .placeName("")
+                        .build())
+                .build()
+        , headers, headers.getAccessToken());
+
         UserDetails.UserData userData = UserDetails.UserData.builder()
                 .storeId(storeId)
                 .employeeName(employeeName)
@@ -103,8 +118,11 @@ public class GlobalServices {
                 .bookingSessions(bookingSessions)
                 .build();
 
+       
+
         UserDetails userDetails = UserDetails.builder()
                 .info(userData)
+                .slotInformation(slotInformation)
                 .build();
 
         return ResponseEntity.ok(userDetails);
