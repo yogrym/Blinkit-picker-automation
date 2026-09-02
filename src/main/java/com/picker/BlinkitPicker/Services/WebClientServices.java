@@ -58,7 +58,7 @@ public class WebClientServices {
         private WebClient blinkClient;
 
 
-        private String AVL_SLOTS_URL = "https://storeops.blinkit.com/api/v1/slots/available";
+        private String AVL_SLOTS_URL = "https://storeops.blinkit.com/api/v1/slots/available_dates";
 
     
 
