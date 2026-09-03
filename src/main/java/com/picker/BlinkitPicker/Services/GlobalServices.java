@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
+import org.hibernate.engine.profile.Fetch;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.http.ResponseEntity;
@@ -15,9 +16,12 @@ import com.picker.BlinkitPicker.Dto.SlotInformation;
 import com.picker.BlinkitPicker.Dto.UserDetails;
 import com.picker.BlinkitPicker.Dto.WorkerList;
 import com.picker.BlinkitPicker.Dto.request.CheckAvailableSlotsRequest;
+import com.picker.BlinkitPicker.Dto.request.FetchSlotsRequest;
+import com.picker.BlinkitPicker.Dto.respons.FetchSlotsResponse;
 import com.picker.BlinkitPicker.Model.UserHeaderModel;
 import com.picker.BlinkitPicker.Model.UserModel;
 import com.picker.BlinkitPicker.Repository.UserRepo;
+import com.picker.BlinkitPicker.Util.DateToUtc;
 
 import io.jsonwebtoken.Claims;
 
@@ -104,6 +108,51 @@ public class GlobalServices {
                 .build()
         , headers, headers.getAccessToken());
 
+
+        UserDetails.NextSlotInformation nextSlotInformation = null;
+
+        if(slotInformation != null && slotInformation.getData() != null && slotInformation.getData().getDates() != null) {
+            searchLoop:
+            for(SlotInformation.SlotDate date : slotInformation.getData().getDates()) {
+                if(date.isBooked()) {
+                    
+                    FetchSlotsRequest fetchSlotsRequest = FetchSlotsRequest.builder()
+                            .startDate(DateToUtc.getPrevDateToUtc(date.getDate()))
+                            .endDate(date.getDate())
+                            .status("Booked")
+                            .locationInfo(FetchSlotsRequest.Location.builder()
+                                    .xLat(Double.valueOf(headers.getXLat()))
+                                    .xLong(Double.valueOf(headers.getXLong()))
+                                    .placeId("")
+                                    .placeName("")
+                                    .build())
+                            .build();
+
+                    FetchSlotsResponse fetchSlotsResponse = webClientServices.getSlotsDetails(headers,fetchSlotsRequest);
+
+                    if(fetchSlotsResponse != null && fetchSlotsResponse.getData() != null && fetchSlotsResponse.getData().getStores() != null) {
+                        for(FetchSlotsResponse.Store store: fetchSlotsResponse.getData().getStores()) {
+                            if(store.getId().equals(headers.getSiteId()) && store.getSlots() != null) {
+                                for(FetchSlotsResponse.Slot slot: store.getSlots()) {
+                                    if(slot != null && slot.isBooked()) {
+                                        nextSlotInformation = UserDetails.NextSlotInformation.builder()
+                                                .date(date.getDate())
+                                                .slotStartTime(slot.getStartTime())
+                                                .slotEndTime(slot.getEndTime())
+                                                .build();
+                                        
+                                        break searchLoop;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                }
+            }
+        }
+
+
         UserDetails.UserData userData = UserDetails.UserData.builder()
                 .storeId(storeId)
                 .storeName(headers.getSiteName())
@@ -124,6 +173,7 @@ public class GlobalServices {
         UserDetails userDetails = UserDetails.builder()
                 .info(userData)
                 .slotInformation(slotInformation)
+                .nextSlotInformation(nextSlotInformation)
                 .build();
 
         return ResponseEntity.ok(userDetails);

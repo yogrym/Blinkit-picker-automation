@@ -305,7 +305,7 @@ public class WebClientServices {
 
         
 
-        public Mono<ResponseEntity<FetchSlotsResponse>> getSlotsDetails(UserHeaderModel headers,
+        public FetchSlotsResponse getSlotsDetails(UserHeaderModel headers,
                         FetchSlotsRequest fetchSlotsRequest) {
 
                 String xTrace = GenerateCookie.generateRequestId(); // for all kind of the requestid we will use it
@@ -349,7 +349,8 @@ public class WebClientServices {
                                         })
                                 .bodyValue(fetchSlotsRequest)
                                 .retrieve()
-                                .toEntity(FetchSlotsResponse.class);
+                                .bodyToMono(FetchSlotsResponse.class)
+                                .block();
         }
 
         public Mono<ResponseEntity<GlobalRespons>> bookSlots(UserHeaderModel headers,

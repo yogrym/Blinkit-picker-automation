@@ -151,15 +151,13 @@ public class BookingWorker implements Runnable {
 
             try {
 
-                ResponseEntity<FetchSlotsResponse> response = blockWithTokenRefresh(
+                FetchSlotsResponse responseBody = blockWithTokenRefresh(
                         "fetch slots",
-                   () -> webClientServices.getSlotsDetails ( headers, request
-                ),headers.getRefreshToken(),headers);
+                        () -> Mono.fromCallable(() -> webClientServices.getSlotsDetails(headers, request)),
+                        headers.getRefreshToken(), headers);
                                 
                 logger.info("Slots fetched for {}. Selected store id is {}.", headers.getEmployeeName() , headers.getSiteId());
                 addLog("Slot list fetched for store " + headers.getSiteId() + " on date " + dates.get(i) + ".");
-
-                FetchSlotsResponse responseBody = response != null ? response.getBody() : null;
                 if (responseBody == null || !responseBody.isSuccess()) {
                     
                     logger.error("{} slots fetch failed for selected store id {}. Error code: {}", 

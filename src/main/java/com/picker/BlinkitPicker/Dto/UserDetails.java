@@ -24,7 +24,25 @@ public class UserDetails {
     @JsonProperty("slot_information")
     private SlotInformation slotInformation;
 
-    
+    @JsonProperty("next_slot_information")
+    private NextSlotInformation nextSlotInformation;
+ 
+
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
+    public static class NextSlotInformation {
+        @JsonProperty("date")
+        private String date;
+
+        @JsonProperty("start_time")
+        private String slotStartTime;
+
+        @JsonProperty("end_time")
+        private String slotEndTime;
+    }
 
 
     @Data
