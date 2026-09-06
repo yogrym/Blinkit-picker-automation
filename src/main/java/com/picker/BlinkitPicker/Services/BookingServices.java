@@ -161,7 +161,7 @@ public class BookingServices implements ApplicationRunner {
             LinkedHashSet<TimesList> timesSet = new LinkedHashSet<>();
             timesSet.add(TimesList.builder().times(times).build());
             for (String date : dates) {
-                map.put(date, new LinkedHashSet<>(timesSet));
+                map.put(DateToUtc.getDateToUtc(date), new LinkedHashSet<>(timesSet));
             }
         }
         UserRequestedDateAndTime dateAndTime = UserRequestedDateAndTime.builder().DateAndTime(map).build();
@@ -512,7 +512,7 @@ public class BookingServices implements ApplicationRunner {
                     LinkedHashSet<TimesList> rTimesSet = new LinkedHashSet<>();
                     rTimesSet.add(TimesList.builder().times(rTimes).build());
                     for (String d : rDates) {
-                        rMap.put(d, new LinkedHashSet<>(rTimesSet));
+                        rMap.put(DateToUtc.getDateToUtc(d), new LinkedHashSet<>(rTimesSet));
                     }
                 }
                 UserRequestedDateAndTime rDateAndTime = UserRequestedDateAndTime.builder().DateAndTime(rMap).build();
