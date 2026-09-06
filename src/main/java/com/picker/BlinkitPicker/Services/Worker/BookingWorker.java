@@ -4,138 +4,198 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.function.Supplier;
-import org.slf4j.Logger;
+import java.util.concurrent.CompletableFuture;
 
-import com.picker.BlinkitPicker.Dto.Logs;
+import com.picker.BlinkitPicker.Dto.DateAndTimeList.TimesList;
+import com.picker.BlinkitPicker.Dto.DateAndTimeList.UserRequestedDateAndTime;
 import com.picker.BlinkitPicker.Dto.Internal.BookSlotsRequest;
+import com.picker.BlinkitPicker.Dto.Logs;
 import com.picker.BlinkitPicker.Dto.request.FetchSlotsRequest;
-import com.picker.BlinkitPicker.Dto.respons.CognitoRefreshTokenRespons;
 import com.picker.BlinkitPicker.Dto.respons.FetchSlotsResponse;
 import com.picker.BlinkitPicker.Dto.respons.GlobalRespons;
-import com.picker.BlinkitPicker.Enums.RoleEnum;
 import com.picker.BlinkitPicker.Model.UserHeaderModel;
-import com.picker.BlinkitPicker.Model.UserModel;
-import com.picker.BlinkitPicker.Repository.UserRepo;
 import com.picker.BlinkitPicker.Services.WebClientServices;
 import com.picker.BlinkitPicker.Util.DateToUtc;
+
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 
-import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
-import org.springframework.util.LinkedMultiValueMap;
-import org.springframework.util.MultiValueMap;
-import org.springframework.web.reactive.function.client.WebClientResponseException;
 
-import reactor.core.publisher.Mono;
-
+/**
+ * BookingWorker — one thread per user session.
+ *
+ * <p>Token refresh is handled entirely by the scheduler, which calls
+ * {@code propagateTokensToAllUserSessions()} and updates {@link #headers},
+ * {@link #accessToken}, and {@link #refreshToken} directly via Lombok setters.
+ * This worker never refreshes tokens itself.
+ *
+ * <p>Each iteration fires fetch-slot requests for ALL pending dates in parallel,
+ * books matched slots, and removes each booked time from that date's list.
+ * When a date's time-list becomes empty the date is removed. When all dates
+ * are gone the worker stops itself.
+ *
+ * <p>Two log channels:
+ * <ul>
+ *   <li><b>Terminal (SLF4J)</b> — printed ONCE at start and once per booking success.</li>
+ *   <li><b>User logs</b>        — max 20 entries; written only on booking success.
+ *                                 Pinned "working fine" entry is always shown first.</li>
+ * </ul>
+ */
 @Getter
 @Setter
 @Slf4j
 public class BookingWorker implements Runnable {
-    
-    private static final Duration API_TIMEOUT = Duration.ofSeconds(2);
-    private static final int MAX_IN_MEMORY_LOGS_SIZE = 10;
-    private static final Logger logger =  LoggerFactory.getLogger(BookingWorker.class);
-    private List<String> dates;
-    private List<String> times;
+
+    // ── Constants ────────────────────────────────────────────────────────────────
+    private static final Duration API_TIMEOUT   = Duration.ofSeconds(10);
+    private static final int      MAX_USER_LOGS = 20;
+    private static final String   PINNED_LOG    = "No issue found, working fine.";
+
+    /** Base poll interval for ADMIN users (ms). */
+    public static final long POLL_INTERVAL_ADMIN_MS  = 200L;
+    /** Base poll interval for normal USER (ms). */
+    public static final long POLL_INTERVAL_USER_MS   = 600L;
+
+    // ── Lifecycle flags ───────────────────────────────────────────────────────────
     private volatile boolean isPaused = false;
-    private volatile boolean isStop = false;
+    private volatile boolean isStop   = false;
 
-    private boolean isAdmin = false;
+    // ── Sleep / shuffle controls — updated externally by SessionManagerScheduler ──
+    /** Base poll interval set at construction time based on user role (ms). */
+    private volatile long    pollIntervalMs;
+    /** When true the worker sleeps shuffleSleepMs instead of pollIntervalMs. */
+    private volatile boolean shuffleMode    = false;
+    /** Random sleep used when shuffleMode is active (ms, set by scheduler). */
+    private volatile long    shuffleSleepMs = 10_000L;
 
-    private final UserModel user;
-    private UserHeaderModel headers;
-    private final UserRepo userRepo;
+    // ── Live date → times map (mutated as slots are booked) ──────────────────────
+    private final LinkedHashMap<String, LinkedHashSet<TimesList>> dateAndTime;
 
-    private WebClientServices webClientServices;
-
-    private final List<Logs> inMemoryUserLogs = Collections.synchronizedList(new ArrayList<>());
-    private long bookedSlotsInSession = 0L;
-    private boolean bookedSlotsSaved = false;
-
-    private volatile String accessToken;
-    private volatile String refreshToken;
+    // ── Auth — updated externally by the scheduler via Lombok setters ─────────────
+    private volatile String              accessToken;
+    private volatile String              refreshToken;
     private volatile java.time.LocalDateTime lastRefreshedAt;
 
-    /** Serializes concurrent token-refresh calls (scheduler vs. worker) */
-    private final Object tokenLock = new Object();
+    // ── Infrastructure ────────────────────────────────────────────────────────────
+    private       UserHeaderModel      headers;
+    private final WebClientServices    webClientServices;
+
+    // ── User-visible logs ─────────────────────────────────────────────────────────
+    private final List<Logs> inMemoryUserLogs = Collections.synchronizedList(new ArrayList<>());
+
+    // ── Session stats ─────────────────────────────────────────────────────────────
+    private long bookedSlotsInSession = 0L;
+
+    // ── Constructor ───────────────────────────────────────────────────────────────
 
     /**
-     * Called immediately after a successful in-thread reactive token refresh
-     * (i.e. when a 401/403 was caught and a new token pair was obtained).
-     *
-     * <p>Wired by {@code BookingServices} as:
-     * <pre>
-     *   (newAccessToken, newRefreshToken) ->
-     *       bookingServices.propagateTokensToAllUserSessions(userId, newAccessToken, newRefreshToken)
-     * </pre>
-     *
-     * <p>This ensures that the moment <em>any</em> worker refreshes its token,
-     * every other live session of the same user is immediately updated with the
-     * same token pair — preventing the other sessions from hitting a cascade of
-     * 401s with the now-revoked old token.
-     *
-     * <p>NOT called from {@link #refreshTokensFromScheduler} because the scheduler
-     * already calls {@code propagateTokensToAllUserSessions} directly.
+     * @param isAdmin  {@code true} for ADMIN/MAINTAINER users (200 ms poll interval);
+     *                 {@code false} for normal USER (600 ms poll interval).
      */
-    private java.util.function.BiConsumer<String, String> onTokenRefreshed;
-
-    public BookingWorker(String userId, List<String> dates, List<String> times, UserModel user,
-            WebClientServices webClientServices, UserRepo userRepo) {
-        this.dates = dates;
-        this.times = times;
-        this.user = user;
-        this.userRepo = userRepo;
-        this.headers = user.getUserHeaders();
-        this.accessToken = user.getUserHeaders().getAccessToken();
-        this.refreshToken = user.getUserHeaders().getRefreshToken();
+    public BookingWorker(UserHeaderModel headers,
+                         String accessToken,
+                         String refreshToken,
+                         WebClientServices webClientServices,
+                         UserRequestedDateAndTime dateAndTime,
+                         boolean isAdmin) {
+        this.headers           = headers;
+        this.accessToken       = accessToken;
+        this.refreshToken      = refreshToken;
         this.webClientServices = webClientServices;
+        this.pollIntervalMs    = isAdmin ? POLL_INTERVAL_ADMIN_MS : POLL_INTERVAL_USER_MS;
+        // Defensive copy so callers cannot mutate our live state
+        this.dateAndTime = dateAndTime != null && dateAndTime.getDateAndTime() != null
+                ? new LinkedHashMap<>(dateAndTime.getDateAndTime())
+                : new LinkedHashMap<>();
     }
 
-    public void saveUserHeaders() {
-        if (this.user != null && this.headers != null) {
-            Long id = this.user.getId() != null ? this.user.getId() : this.headers.getUserId();
-            if (id != null) {
-                UserModel latestUser = this.userRepo.findById(id).orElse(this.user);
-                latestUser.setUserHeaders(this.headers);
-                this.userRepo.save(latestUser);
-                this.user.setUserHeaders(this.headers);
-                this.user.setTotalBookedSlots(latestUser.getTotalBookedSlots());
+    // ── Lifecycle controls ────────────────────────────────────────────────────────
+
+    public boolean pause()  { this.isPaused = true;  return true; }
+    public boolean resume() { this.isPaused = false; return true; }
+    public boolean stop()   { this.isStop   = true;  return true; }
+
+    // ── Shuffle controls (called by SessionManagerScheduler) ─────────────────────
+
+    /** Enable shuffle mode: worker will sleep {@code sleepMs} ms per cycle. */
+    public void enableShuffle(long sleepMs) {
+        this.shuffleSleepMs = sleepMs;
+        this.shuffleMode    = true;
+    }
+
+    /** Disable shuffle mode: worker reverts to its role-based pollIntervalMs. */
+    public void disableShuffle() {
+        this.shuffleMode = false;
+    }
+
+    // ── Main loop ─────────────────────────────────────────────────────────────────
+
+    @Override
+    public void run() {
+        // Terminal log — printed exactly ONCE at startup
+        log.info("[BookingWorker] Started for user={} store={} dates={} times={}",
+                headers.getEmployeeName(),
+                headers.getSiteId(),
+                new ArrayList<>(dateAndTime.keySet()),
+                dateAndTime.values());
+
+        try {
+            while (!isStop) {
+
+                if (isPaused) {
+                    try { Thread.sleep(3_000); } catch (InterruptedException e) { break; }
+                    continue;
+                }
+
+                // Auto-stop when all dates are done
+                if (dateAndTime.isEmpty()) {
+                    log.info("[BookingWorker] All dates completed for user={} store={}. Stopping.",
+                            headers.getEmployeeName(), headers.getSiteId());
+                    isStop = true;
+                    continue;
+                }
+
+                try {
+                    fetchAndBookAllDatesAsync();
+                    // Use shuffle sleep when active, otherwise use role-based base interval
+                    long sleepMs = shuffleMode ? shuffleSleepMs : pollIntervalMs;
+                    Thread.sleep(sleepMs);
+                } catch (InterruptedException e) {
+                    break;
+                } catch (Throwable t) {
+                    log.error("[BookingWorker] Unexpected error for user={}: {}",
+                            headers.getEmployeeName(), t.toString());
+                    break;
+                }
             }
+        } finally {
+            log.info("[BookingWorker] Worker finished for user={} store={}.",
+                    headers.getEmployeeName(), headers.getSiteId());
         }
     }
 
-    public Boolean pause() {
-        this.isPaused = true;
-        return true;
-    }
+    // ── Async parallel fetch + book ───────────────────────────────────────────────
 
-    public Boolean resume() {
-        this.isPaused = false;
-        return true;
-    }
+    /**
+     * Fires one async request per pending date simultaneously.
+     * All dates are sent without waiting for the previous one to complete.
+     * Waits for all to finish before the next poll cycle begins.
+     */
+    private void fetchAndBookAllDatesAsync() {
+        List<String> currentDates;
+        synchronized (dateAndTime) {
+            currentDates = new ArrayList<>(dateAndTime.keySet());
+        }
 
-    public Boolean stop() {
-        this.isStop = true;
-        return true;
-    }
+        List<CompletableFuture<Void>> futures = new ArrayList<>();
 
-    public void fecthSlots() {
-
-        for (int i = 0; i < dates.size(); i++) {
-            
-            
-            this.isAdmin = user.getRole().equals(RoleEnum.ADMIN) || user.getRole().equals(RoleEnum.MAINTAINER);
-
-         
-            String endDateUtc = DateToUtc.getDateToUtc(dates.get(i));
+        for (String endDateUtc : currentDates) {
             String startDateUtc = DateToUtc.getPrevDateToUtc(endDateUtc);
-
 
             FetchSlotsRequest request = FetchSlotsRequest.builder()
                     .endDate(endDateUtc)
@@ -146,465 +206,272 @@ public class BookingWorker implements Runnable {
                             .build())
                     .build();
 
-           logger.info("Booking has been started for {}/ selected store id is {}", headers.getEmployeeName(), headers.getSiteId());
-           addLog("Booking started for store " + headers.getSiteId() + ".");
-
-            try {
-
-                FetchSlotsResponse responseBody = blockWithTokenRefresh(
-                        "fetch slots",
-                        () -> Mono.fromCallable(() -> webClientServices.getSlotsDetails(headers, request)),
-                        headers.getRefreshToken(), headers);
-                                
-                logger.info("Slots fetched for {}. Selected store id is {}.", headers.getEmployeeName() , headers.getSiteId());
-                addLog("Slot list fetched for store " + headers.getSiteId() + " on date " + dates.get(i) + ".");
-                if (responseBody == null || !responseBody.isSuccess()) {
-                    
-                    logger.error("{} slots fetch failed for selected store id {}. Error code: {}", 
-                            headers.getEmployeeName(), headers.getSiteId(), responseBody != null ? responseBody.getErrorCode() : "null");
-                    addLog("Unable to fetch slots for store " + headers.getSiteId() + ".");
-                    continue;
-                }
-               
-
-            
-                Map<String, String> slotIdToTime = filterSlotId(responseBody, times);
-                List<String> slotIds = new ArrayList<>(slotIdToTime.keySet());
-
-                if (!slotIds.isEmpty()) {
-                    String timesLog = slotIdToTime.toString();
-
-                    ResponseEntity<GlobalRespons> bookingResponse = blockWithTokenRefresh(
-                            "book slots",
-                            () -> webClientServices.bookSlots(
-                                   headers,
-                                   BookSlotsRequest.builder().slotIds(slotIds).build(),
-                                    timesLog),headers.getRefreshToken(),headers);
-
-                    if (bookingResponse.getStatusCode().is2xxSuccessful() 
-                            && bookingResponse.getBody().isSuccess()) {
-
-                        logger.info(" SUCCESS! Booked slots: {}/for user : {}/ store id: {}" + timesLog
-                                + " on date " + dates.get(i), slotIds.size(), headers.getEmployeeName(), headers.getSiteId());
-                        addLog("Successfully booked " + slotIds.size() + " slot(s) for " + dates.get(i) + ".");
-                        incrementBookedSlots(slotIds.size());
-                        continue;
-                    } 
-                    
-                    
-                    else {
-
-                    int statusCode = bookingResponse.getStatusCode().value();
-
-                      logger.error(
-            "{} failed to book slots for employee: {}, store id: {}, date: {}",
-                     statusCode,
-                     headers.getEmployeeName(),
-                     headers.getSiteId(),
-                     dates.get(i));           
-                    addLog("Booking failed for store " + headers.getSiteId() + " on date " + dates.get(i) + ".");
-                    
-                    continue;
-                    }   
-
-                }
-
-            } catch (Throwable e) {
-                logger.error("[BookingWorker - " + headers.getEmployeeName() + "] Slot fetch/booking failed: {}", e.toString());
-                addLog("Slot fetching or booking failed for date " + dates.get(i) + ".");
-            }
+            futures.add(CompletableFuture.runAsync(() -> processOneDate(endDateUtc, request)));
         }
-    }
 
-    private <T> T blockWithTokenRefresh(String operationName, Supplier<Mono<T>> apiCall,String refreshToken,UserHeaderModel headers) {
-        try {
-            return apiCall.get().block(API_TIMEOUT);
-        } catch (WebClientResponseException e) {
-            if (!isUnauthorizedOrForbidden(e)) {
-                throw e;
-            }
-
-            logger.error("[{}]] " + operationName + " returned HTTP "
-                    + e.getStatusCode().value() + ". Refreshing AccessToken.", headers.getEmployeeName());
-
-            addLog("Session expired while processing your booking. Refreshing the session.");
-
-            if (!refreshAccessToken(refreshToken, headers)) {
-                addLog("Session refresh failed. Retrying on next cycle.");
-                throw e;
-            }
-
-            logger.info("[BookingWorker - " + headers.getEmployeeName() + "] AccessToken refreshed. Retrying " + operationName + ".");
-            addLog("Session refreshed. Retrying the request.");
-            return apiCall.get().block();
-        }
-    }
-
-    private boolean isUnauthorizedOrForbidden(WebClientResponseException e) {
-        int statusCode = e.getStatusCode().value();
-        return statusCode == 401 || statusCode == 403;
-    }
-
-    public boolean forceAccessTokenRefresh() {
-        return refreshAccessToken(this.refreshToken, this.headers);
+        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
     }
 
     /**
-     * Called by the scheduler to refresh tokens directly inside the live booking thread.
-     * Updates in-thread accessToken, refreshToken, headers, and lastRefreshedAt.
-     * The scheduler is responsible for persisting the new tokens to DB.
-     * Never throws — returns false on any failure.
+     * Handles the full fetch → filter → book → cleanup flow for a single date.
+     * Errors are swallowed silently — the next cycle will retry automatically.
      */
-    public boolean refreshTokensFromScheduler(WebClientServices webClientServices) {
-        synchronized (tokenLock) {
-            try {
-                if (this.headers == null || this.refreshToken == null) {
-                    logger.warn("[BookingWorker] Cannot refresh: headers or refreshToken is null for user {}",
-                            this.headers != null ? this.headers.getEmployeeName() : "unknown");
-                    return false;
-                }
+    private void processOneDate(String endDateUtc, FetchSlotsRequest request) {
+        try {
+            // ── Fetch slots ──────────────────────────────────────────────────────
+            FetchSlotsResponse response = webClientServices.getSlotsDetails(headers, request, this.accessToken);
 
-                MultiValueMap<String, String> formData = new LinkedMultiValueMap<>();
-                formData.add("refresh_token", this.refreshToken);
+            if (response == null || !response.isSuccess()) {
+                return;
+            }
 
-                CognitoRefreshTokenRespons response = webClientServices.refreshToken(formData, this.headers);
+            // ── Collect requested times for this date ────────────────────────────
+            LinkedHashSet<TimesList> timesForDate;
+            synchronized (dateAndTime) {
+                timesForDate = dateAndTime.get(endDateUtc);
+            }
 
-                if (response == null || !Boolean.TRUE.equals(response.getSuccess())) {
-                    logger.warn("[BookingWorker] Scheduler token refresh failed for user {}",
-                            this.headers.getEmployeeName());
-                    addLog("Scheduled session refresh failed.");
-                    return false;
-                }
+            List<String> requestedTimes = collectTimes(timesForDate);
 
-                String newAccessToken  = response.getAccessToken();
-                String newRefreshToken = response.getRefreshToken();
+            // ── Filter matching slot IDs ─────────────────────────────────────────
+            Map<String, String> slotIdToTimeKey = filterSlots(response, requestedTimes);
 
-                if (newAccessToken == null || newRefreshToken == null) {
-                    logger.warn("[BookingWorker] Scheduler received null tokens for user {}",
-                            this.headers.getEmployeeName());
-                    addLog("Scheduled session refresh returned empty tokens.");
-                    return false;
-                }
+            if (slotIdToTimeKey.isEmpty()) {
+                return;
+            }
 
-                // Update in-thread state atomically — the running loop uses these next iteration
-                this.accessToken     = newAccessToken;
-                this.refreshToken    = newRefreshToken;
-                this.headers.setAccessToken(newAccessToken);
-                this.headers.setRefreshToken(newRefreshToken);
-                this.lastRefreshedAt = java.time.LocalDateTime.now();
+            // ── Book each slot independently in parallel ──────────────────────────
+            // If one slot was already taken, only that one fails —
+            // the rest are still attempted and can succeed.
+            List<CompletableFuture<Void>> bookingJobs = new ArrayList<>();
 
-                logger.info("[BookingWorker] Tokens refreshed in-thread for user {}", this.headers.getEmployeeName());
-                addLog("Your session tokens have been refreshed by the scheduler.");
-                return true;
+            for (Map.Entry<String, String> entry : slotIdToTimeKey.entrySet()) {
+                String slotId  = entry.getKey();
+                String timeKey = entry.getValue();
 
-            } catch (Exception e) {
-                logger.error("[BookingWorker] Error during scheduler token refresh for user {}: {}",
-                        this.headers != null ? this.headers.getEmployeeName() : "unknown", e.getMessage(), e);
-                addLog("Scheduled session refresh encountered an error.");
-                return false;
+                CompletableFuture<Void> job = CompletableFuture.runAsync(() -> {
+                    try {
+                        ResponseEntity<GlobalRespons> resp = webClientServices
+                                .bookSlots(
+                                        headers,
+                                        BookSlotsRequest.builder()
+                                                .slotIds(List.of(slotId))
+                                                .build(),
+                                        timeKey,
+                                        this.accessToken)
+                                .block(API_TIMEOUT);
+
+                        if (resp == null
+                                || !resp.getStatusCode().is2xxSuccessful()
+                                || resp.getBody() == null
+                                || !resp.getBody().isSuccess()) {
+                            // Slot unavailable or already taken — skip silently
+                            return;
+                        }
+
+                        // ── Single slot booked successfully ──────────────────────
+                        bookedSlotsInSession++;
+
+                        // Terminal log — one line per slot
+                        log.info("[BookingWorker] BOOKED — user={} store={} date={} slot={} time={}",
+                                headers.getEmployeeName(), headers.getSiteId(),
+                                endDateUtc, slotId, timeKey);
+
+                        // User log — only on success
+                        addUserLog("Slot booked for date " + endDateUtc + " | time: " + timeKey);
+
+                        // Remove only this slot's time from the date's queue
+                        removeBookedTimesFromDate(endDateUtc, Map.of(slotId, timeKey));
+
+                    } catch (Throwable e) {
+                        log.error("[BookingWorker] Failed to book slotId={} date={} user={}: {}",
+                                slotId, endDateUtc, headers.getEmployeeName(), e.toString());
+                    }
+                });
+
+                bookingJobs.add(job);
+            }
+
+            // Wait for all per-slot booking attempts to complete
+            CompletableFuture.allOf(bookingJobs.toArray(new CompletableFuture[0])).join();
+
+        } catch (Throwable e) {
+            log.error("[BookingWorker] Error on date={} for user={}: {}",
+                    endDateUtc, headers.getEmployeeName(), e.toString());
+        }
+    }
+
+    // ── Time/date removal ─────────────────────────────────────────────────────────
+
+    /**
+     * After a successful booking removes the booked time keys from the date's
+     * time-list. If the list becomes empty the date is also removed, eventually
+     * triggering auto-stop when all dates are gone.
+     */
+    private void removeBookedTimesFromDate(String endDateUtc, Map<String, String> bookedSlotMap) {
+        synchronized (dateAndTime) {
+            LinkedHashSet<TimesList> timesSet = dateAndTime.get(endDateUtc);
+
+            if (timesSet == null || timesSet.isEmpty()) {
+                dateAndTime.remove(endDateUtc);
+                return;
+            }
+
+            for (String bookedTimeKey : bookedSlotMap.values()) {
+                timesSet.removeIf(tl -> tl.getTimes() != null && tl.getTimes().contains(bookedTimeKey));
+            }
+
+            if (timesSet.isEmpty()) {
+                dateAndTime.remove(endDateUtc);
+                log.info("[BookingWorker] All slots booked for date={}. Date removed from queue.", endDateUtc);
             }
         }
     }
 
-    private boolean refreshAccessToken(String refreshToken, UserHeaderModel headers) {
-        String newAccessToken  = null;
-        String newRefreshToken = null;
+    // ── Slot filtering ────────────────────────────────────────────────────────────
 
-        synchronized (tokenLock) {
-            try {
-
-                MultiValueMap<String,String> formData = new LinkedMultiValueMap<>();
-                formData.add("refresh_token", refreshToken);
-
-                CognitoRefreshTokenRespons response = webClientServices.refreshToken(formData, headers);
-
-                if (!response.getSuccess()) {
-                    logger.error("Cannot refresh AccessToken for user {}: ", headers.getEmployeeName());
-                    addLog("Session refresh failed.");
-                    return false;
-                }
-
-                if (response.getAccessToken() != null && response.getRefreshToken() != null) {
-                    // Update atomically under the lock
-                    this.accessToken = response.getAccessToken();
-                    this.refreshToken = response.getRefreshToken();
-                    headers.setAccessToken(this.accessToken);
-                    headers.setRefreshToken(this.refreshToken);
-                    this.lastRefreshedAt = java.time.LocalDateTime.now();
-                    newAccessToken  = this.accessToken;
-                    newRefreshToken = this.refreshToken;
-                    logger.info("User session has been renewed  {}: ", headers.getEmployeeName());
-                    addLog("Your session has been renewed. Propagating to all your sessions...");
-                } else {
-                    return false;
-                }
-
-            } catch (WebClientResponseException e) {
-                String responseBody = e.getResponseBodyAsString();
-                logger.error("[TOKEN-ROTATE] Blinkit responded with HTTP {} for user {}. Response body: {}",
-                        e.getStatusCode().value(), headers.getEmployeeName(), responseBody);
-                addLog("Session refresh failed.");
-                return false;
-            } catch (Throwable e) {
-                logger.error("[TOKEN-ROTATE] Unexpected error refreshing token for {}: {}", headers.getEmployeeName(), e.toString());
-                addLog("Session refresh failed.");
-                return false;
-            }
-        }
-
-        // ── Fire propagation callback OUTSIDE the lock ────────────────────────────
-        // Propagates the new token pair to every other live session of this user
-        // (in-memory workers + DB task rows) so they don't hit 401 with the now-
-        // revoked old token. The callback is wired by BookingServices on construction.
-        if (newAccessToken != null && onTokenRefreshed != null) {
-            try {
-                onTokenRefreshed.accept(newAccessToken, newRefreshToken);
-                logger.info("[TOKEN-ROTATE] Cross-session token propagation triggered for user {}.",
-                        headers.getEmployeeName());
-            } catch (Exception e) {
-                // Never let propagation failure block the current booking thread
-                logger.error("[TOKEN-ROTATE] Cross-session propagation failed for user {}: {}",
-                        headers.getEmployeeName(), e.getMessage());
-            }
-        }
-
-        return true;
-    }
-
-    /** Wired by BookingServices after construction. */
-    public void setOnTokenRefreshed(java.util.function.BiConsumer<String, String> callback) {
-        this.onTokenRefreshed = callback;
-    }
-
-
-   
-    private Map<String, String> filterSlotId(FetchSlotsResponse response, List<String> times) {
+    /**
+     * Finds the user's store in the API response, keeps only unbooked+allowed slots,
+     * then matches each against the user's requested times.
+     *
+     * @return slotId → IST time-key map; empty if nothing matched
+     */
+    private Map<String, String> filterSlots(FetchSlotsResponse response, List<String> requestedTimes) {
         if (response == null || response.getData() == null || response.getData().getStores() == null) {
             return Collections.emptyMap();
         }
 
-        String userStoreId = user.getUserHeaders() != null ? user.getUserHeaders().getSiteId() : null;
-        logger.debug("Filtering slots for store {}.", userStoreId);
-        addLog("Checking available slots for store " + userStoreId + ".");
+        String userStoreId = headers.getSiteId();
 
-        // ── Step 1: find the matching store ──────────────────────────────────────
+        // Step 1 — locate the user's store
         FetchSlotsResponse.Store matchedStore = null;
-        String storeName = null;
         for (FetchSlotsResponse.Store store : response.getData().getStores()) {
             if (userStoreId != null && userStoreId.equals(store.getId())) {
                 matchedStore = store;
-                storeName = store.getName();
                 break;
             }
         }
 
-        if (matchedStore == null) {
-            logger.debug("Currently no slots available for store " + storeName + "for user " + headers.getEmployeeName());
-            addLog("No slots are currently available for store " + userStoreId + ".");
+        if (matchedStore == null || matchedStore.getSlots() == null || matchedStore.getSlots().isEmpty()) {
             return Collections.emptyMap();
         }
 
-        if (matchedStore.getSlots() == null || matchedStore.getSlots().isEmpty()) {
-            logger.debug("Empty slots list for store " + storeName + " for user " + headers.getEmployeeName());
-            addLog("No slots are currently available for store " + userStoreId + ".");
-            return Collections.emptyMap();
-        }
-
-        
-        List<FetchSlotsResponse.Slot> availableSlots = new ArrayList<>();
-
+        // Step 2 — keep unbooked + booking-allowed slots
+        List<FetchSlotsResponse.Slot> available = new ArrayList<>();
         for (FetchSlotsResponse.Slot slot : matchedStore.getSlots()) {
-            boolean isBooked = slot.isBooked();
             boolean allowed = slot.getBookingEligibility() != null && slot.getBookingEligibility().isAllowed();
-
-            if (!isBooked && allowed) {
-                availableSlots.add(slot); 
+            if (!slot.isBooked() && allowed) {
+                available.add(slot);
             }
         }
 
-        if (availableSlots.isEmpty()) {
-            logger.debug("No available slots after filtering for store " + storeName + " for user " + headers.getEmployeeName());
-            addLog("No available slots matched the booking requirements.");
+        if (available.isEmpty()) {
             return Collections.emptyMap();
         }
 
-        // ── Step 3: "all" mode → return all available slots ──────────────────────
-        boolean acceptAll = (times == null || times.isEmpty()
-                || (times.size() == 1 && "all".equalsIgnoreCase(times.get(0))));
+        // Step 3 — "all" mode: return every available slot
+        boolean acceptAll = requestedTimes == null || requestedTimes.isEmpty()
+                || (requestedTimes.size() == 1 && "all".equalsIgnoreCase(requestedTimes.get(0)));
 
         if (acceptAll) {
-
             Map<String, String> all = new LinkedHashMap<>();
-            for (FetchSlotsResponse.Slot slot : availableSlots) {
+            for (FetchSlotsResponse.Slot slot : available) {
                 all.put(String.valueOf(slot.getId()),
                         DateToUtc.slotTimeKey(slot.getStartTime(), slot.getEndTime()));
             }
-
-            logger.debug("[BookingWorker] Mode=ALL -> returning " + all.size() + " available slots.");
-            addLog(all.size() + " available slot(s) found.");
             return all;
         }
 
-        // ── Step 4: filter by preferred time windows IN ORDER ─────────────────────
-        // Bot: for each key in time_filter, collect all slots whose time key matches.
-        // Uses LinkedHashMap to preserve insertion order (= user preference order).
-        Map<String, String> matchedSlots = new LinkedHashMap<>();
-        for (String preferredKey : times) {
-            for (FetchSlotsResponse.Slot slot : availableSlots) {
-
-                if (DateToUtc.isTimeMatch(preferredKey, slot.getStartTime(), slot.getEndTime())) {
-                    String slotKey = DateToUtc.slotTimeKey(slot.getStartTime(), slot.getEndTime());
-                    matchedSlots.put(String.valueOf(slot.getId()), slotKey);
-                    logger.info("A slot matched the preferred shift time {}.", preferredKey);
+        // Step 4 — match by preferred time windows, preserving order
+        Map<String, String> matched = new LinkedHashMap<>();
+        for (String preferred : requestedTimes) {
+            for (FetchSlotsResponse.Slot slot : available) {
+                if (DateToUtc.isTimeMatch(preferred, slot.getStartTime(), slot.getEndTime())) {
+                    matched.put(String.valueOf(slot.getId()),
+                            DateToUtc.slotTimeKey(slot.getStartTime(), slot.getEndTime()));
                 }
             }
         }
 
-        if (matchedSlots.isEmpty()) {
-            // Log what we saw vs what we wanted — mirrors bot's debug log
-            List<String> seenKeys = new ArrayList<>();
-            for (FetchSlotsResponse.Slot slot : availableSlots) {
-                seenKeys.add(DateToUtc.slotTimeKey(slot.getStartTime(), slot.getEndTime()));
-            }
-                    logger.debug("No slots matched preferred time windows. Preferred keys: " + times
-                    + " | Seen keys: " + seenKeys);
-            addLog("No slots matched your preferred shift times.");
-        }
-
-        return matchedSlots;
+        return matched;
     }
 
-   
+    // ── User logs ─────────────────────────────────────────────────────────────────
 
+    /**
+     * Returns the user-visible log list. The pinned entry is always prepended first.
+     * Called by BookingServices to serve the /logs endpoint.
+     */
     public List<Logs> getLogs() {
         synchronized (inMemoryUserLogs) {
-            // ── Pinned log: always the first entry, never deleted ────────────────
-            // Generated dynamically from the current live tokens so it is always
-            // accurate — even after a scheduler refresh or an OTP re-login.
-            String pinnedEntry = buildPinnedTokenLog();
-
             List<Logs> result = new ArrayList<>();
-            result.add(Logs.builder().logs(List.of(pinnedEntry)).build());
+            result.add(Logs.builder().logs(List.of(PINNED_LOG)).build());
             result.addAll(inMemoryUserLogs);
             return result;
         }
     }
 
     /**
-     * Builds the pinned log line that is prepended to every {@link #getLogs()} call.
-     * Shows truncated access- and refresh-token values so the user can verify which
-     * credential pair is active without exposing the full token string.
-     *
-     * <p>Format:  {@code [SESSION] Access: abc12...ef34 | Refresh: xyz98...cd12}
+     * Appends a user-visible log entry.
+     * When the cap (20) is reached all old entries are cleared first — the
+     * pinned entry is always prepended dynamically so it is never lost.
      */
-    private String buildPinnedTokenLog() {
-        String at = truncateToken(this.accessToken);
-        String rt = truncateToken(this.refreshToken);
-        return "[SESSION] Access: " + at + " | Refresh: " + rt;
-    }
-
-    /** Returns {@code first5...last4} of a token, or {@code "(none)"} if null/blank. */
-    private static String truncateToken(String token) {
-        if (token == null || token.isBlank()) return "(none)";
-        if (token.length() <= 12) return token; // short enough to show in full
-        return token.substring(0, 5) + "..." + token.substring(token.length() - 4);
-    }
-    
-
-    private void addLog(String  log) {
+    private void addUserLog(String message) {
         synchronized (inMemoryUserLogs) {
-            if (inMemoryUserLogs.size() >= MAX_IN_MEMORY_LOGS_SIZE) {
-                inMemoryUserLogs.remove(0); // Remove oldest log
+            if (inMemoryUserLogs.size() >= MAX_USER_LOGS) {
+                inMemoryUserLogs.clear();
             }
-            inMemoryUserLogs.add(Logs.builder().logs(List.of(log)).build());
-        }
-    }
-    
-    
-
-    private void incrementBookedSlots(long count) {
-        if (count <= 0) return;
-        bookedSlotsInSession += count;
-        // Persist immediately so data is never lost on JVM kill/crash
-        try {
-            Long id = user.getId() != null ? user.getId() : headers.getUserId();
-            UserModel latestUser = userRepo.findById(id).orElse(user);
-            Long currentTotal = latestUser.getTotalBookedSlots() != null ? latestUser.getTotalBookedSlots() : 0L;
-            latestUser.setTotalBookedSlots(currentTotal + count);
-            userRepo.save(latestUser);
-            this.user.setTotalBookedSlots(currentTotal + count);
-        } catch (Exception e) {
-            logger.error("Failed to save booked slot count: {}", e.toString());
-            addLog("Booked slot count could not be saved.");
+            inMemoryUserLogs.add(Logs.builder().logs(List.of(message)).build());
         }
     }
 
-   
-   
+    // ── Helpers ───────────────────────────────────────────────────────────────────
 
-    private void logError(String message) {
-        logger.error(message);
+    /** Flattens a {@code LinkedHashSet<TimesList>} into a single {@code List<String>}. */
+    private static List<String> collectTimes(LinkedHashSet<TimesList> timesSet) {
+        if (timesSet == null || timesSet.isEmpty()) return Collections.emptyList();
+        List<String> flat = new ArrayList<>();
+        for (TimesList tl : timesSet) {
+            if (tl.getTimes() != null) flat.addAll(tl.getTimes());
+        }
+        return flat;
     }
 
+    // ── External date/time mutation (called by BookingServices API) ───────────────
+
+    /** Removes an entire date from the queue. */
     public boolean removeOneDateFromList(String date) {
-        dates.remove(date);
-        return true;
+        synchronized (dateAndTime) {
+            return dateAndTime.remove(date) != null;
+        }
     }
 
-    public boolean removeOneTimeFromList(String time) {
-        times.remove(time);
-        return true;
+    /** Removes a specific time from a specific date. Removes the date if no times remain. */
+    public boolean removeOneTimeFromDate(String date, String time) {
+        synchronized (dateAndTime) {
+            LinkedHashSet<TimesList> timesSet = dateAndTime.get(date);
+            if (timesSet == null) return false;
+            boolean removed = timesSet.removeIf(tl -> tl.getTimes() != null && tl.getTimes().remove(time));
+            if (timesSet.isEmpty()) dateAndTime.remove(date);
+            return removed;
+        }
     }
 
+    /** Returns all pending dates (for display / API). */
+    public List<String> getDates() {
+        synchronized (dateAndTime) {
+            return new ArrayList<>(dateAndTime.keySet());
+        }
+    }
 
-
-     @Override
-    public void run() {
-        try {
-
-           logger.info("Booking has been initiated for : {}/ the seleted dates are : {}", headers.getEmployeeName(), dates);
-           addLog("Booking process initiated.");
-
-            while (!this.isStop) {
-
-                if (this.isPaused) {
-                    try {
-                        Thread.sleep(50000);
-                    } catch (InterruptedException e) {
-                        break;
-                    }
-                    continue;
-                }
-
-                
-
-                if (dates == null || dates.isEmpty()) {
-                    this.isStop = true;
-                    continue;
-                }
-
-                try {
-
-                    fecthSlots();
-
-                    if (Boolean.TRUE.equals(isAdmin)) {
-                        Thread.sleep(2000);
-                    } else {
-                        Thread.sleep(5000);
-                    }
-                } catch (InterruptedException e) {
-                    addLog("Booking process stopped.");
-                    break;
-                } catch (Throwable t) {
-                    logError("[BookingWorker - " + headers.getUserId() + "] Worker stopped because of an error: " + t.toString());
-                    addLog("Booking process stopped because of an error.");
-                    break;
-                }
+    /** Returns all pending times flattened across all dates (for display / API). */
+    public List<String> getTimes() {
+        synchronized (dateAndTime) {
+            List<String> all = new ArrayList<>();
+            for (LinkedHashSet<TimesList> timesSet : dateAndTime.values()) {
+                all.addAll(collectTimes(timesSet));
             }
-        } finally {
-            logger.info("[BookingWorker - " + headers.getUserId() + "] Worker finished.");
-            addLog("Booking process finished.");
-           
+            return all;
         }
     }
 }
