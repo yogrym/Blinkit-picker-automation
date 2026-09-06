@@ -139,8 +139,9 @@ public class BookingServices implements ApplicationRunner {
 
         for(int i =0;i<dates.size();i++) {
           LinkedHashSet<TimesList> t = new LinkedHashSet<>();
+          // Must create a new ArrayList copy so each date has its own independent list in memory!
           TimesList tBuildList = TimesList.builder()
-                                 .times(times)
+                                 .times(new java.util.ArrayList<>(times))
                                  .build();
           t.add(tBuildList);
 
@@ -158,10 +159,11 @@ public class BookingServices implements ApplicationRunner {
         // Rebuild UserRequestedDateAndTime from the persisted flat dates + times
         LinkedHashMap<String, LinkedHashSet<TimesList>> map = new LinkedHashMap<>();
         if (dates != null) {
-            LinkedHashSet<TimesList> timesSet = new LinkedHashSet<>();
-            timesSet.add(TimesList.builder().times(times).build());
             for (String date : dates) {
-                map.put(DateToUtc.getDateToUtc(date), new LinkedHashSet<>(timesSet));
+                LinkedHashSet<TimesList> timesSet = new LinkedHashSet<>();
+                // Create a completely new list copy for this specific date
+                timesSet.add(TimesList.builder().times(new java.util.ArrayList<>(times)).build());
+                map.put(DateToUtc.getDateToUtc(date), timesSet);
             }
         }
         UserRequestedDateAndTime dateAndTime = UserRequestedDateAndTime.builder().DateAndTime(map).build();
@@ -509,10 +511,10 @@ public class BookingServices implements ApplicationRunner {
                 List<String> rTimes = task.getSessionInfo().getTimes();
                 LinkedHashMap<String, LinkedHashSet<TimesList>> rMap = new LinkedHashMap<>();
                 if (rDates != null) {
-                    LinkedHashSet<TimesList> rTimesSet = new LinkedHashSet<>();
-                    rTimesSet.add(TimesList.builder().times(rTimes).build());
                     for (String d : rDates) {
-                        rMap.put(DateToUtc.getDateToUtc(d), new LinkedHashSet<>(rTimesSet));
+                        LinkedHashSet<TimesList> rTimesSet = new LinkedHashSet<>();
+                        rTimesSet.add(TimesList.builder().times(new java.util.ArrayList<>(rTimes)).build());
+                        rMap.put(DateToUtc.getDateToUtc(d), rTimesSet);
                     }
                 }
                 UserRequestedDateAndTime rDateAndTime = UserRequestedDateAndTime.builder().DateAndTime(rMap).build();
