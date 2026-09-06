@@ -28,7 +28,7 @@ public class GlobalRespons {
         @JsonProperty("message")
         private String message;
         @JsonProperty("status_code")
-        private int statusCode;
+        private Integer statusCode;
     }
 
 }

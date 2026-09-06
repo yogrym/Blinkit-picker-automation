@@ -318,7 +318,13 @@ public class BookingWorker implements Runnable {
             }
 
             for (String bookedTimeKey : bookedSlotMap.values()) {
-                timesSet.removeIf(tl -> tl.getTimes() != null && tl.getTimes().contains(bookedTimeKey));
+                for (TimesList tl : timesSet) {
+                    if (tl.getTimes() != null) {
+                        tl.getTimes().remove(bookedTimeKey); // Remove only this specific time
+                    }
+                }
+                // Only remove the TimesList object if all its times are gone
+                timesSet.removeIf(tl -> tl.getTimes() == null || tl.getTimes().isEmpty());
             }
 
             if (timesSet.isEmpty()) {
