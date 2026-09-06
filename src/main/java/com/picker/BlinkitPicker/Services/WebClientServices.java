@@ -1,16 +1,11 @@
 package com.picker.BlinkitPicker.Services;
 
-import java.util.Map;
-import java.util.UUID;
-
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
-import org.springframework.http.MediaType;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.reactive.function.BodyInserters;
 
@@ -19,13 +14,10 @@ import com.picker.BlinkitPicker.Dto.SlotInformation;
 import com.picker.BlinkitPicker.Dto.Internal.BookSlotsRequest;
 import com.picker.BlinkitPicker.Dto.Internal.ViewAvailaibleSlotsRequest;
 import com.picker.BlinkitPicker.Dto.request.CheckAvailableSlotsRequest;
-import com.picker.BlinkitPicker.Dto.request.CognitoRefreshTokenRequest;
 import com.picker.BlinkitPicker.Dto.request.FetchSlotsRequest;
 import com.picker.BlinkitPicker.Dto.request.LoginRequest;
-import com.picker.BlinkitPicker.Dto.request.OtpAuthRequest;
 import com.picker.BlinkitPicker.Dto.request.SendOtpRequest;
 import com.picker.BlinkitPicker.Dto.request.VerifyOtpClientRequest;
-import com.picker.BlinkitPicker.Dto.request.VerifyOtpRequest;
 import com.picker.BlinkitPicker.Dto.respons.CognitoRefreshTokenRespons;
 import com.picker.BlinkitPicker.Dto.respons.FetchSlotsResponse;
 import com.picker.BlinkitPicker.Dto.respons.GlobalRespons;
@@ -37,7 +29,6 @@ import com.picker.BlinkitPicker.Exception.CognitoException;
 import com.picker.BlinkitPicker.Dto.respons.AvailableSlotsRespons;
 import com.picker.BlinkitPicker.Model.UserHeaderModel;
 import com.picker.BlinkitPicker.Model.UserModel;
-import com.picker.BlinkitPicker.Util.ContextDataUtil;
 import com.picker.BlinkitPicker.Util.GenerateCookie;
 
 import org.springframework.web.reactive.function.client.WebClientRequestException;
@@ -306,7 +297,7 @@ public class WebClientServices {
         
 
         public FetchSlotsResponse getSlotsDetails(UserHeaderModel headers,
-                        FetchSlotsRequest fetchSlotsRequest) {
+                        FetchSlotsRequest fetchSlotsRequest, String accessToken) {
 
                 String xTrace = GenerateCookie.generateRequestId(); // for all kind of the requestid we will use it
 
@@ -344,7 +335,7 @@ public class WebClientServices {
                                                 httpHeaders.set("session-token", GenerateCookie.generateSessionToken());
                                                 httpHeaders.set("cookie", GenerateCookie.generateCfBmCookie());
                                                 httpHeaders.set("x-app-locale", safe(headers.getAppLocale()));
-                                                httpHeaders.set("access_token", headers.getAccessToken());
+                                                httpHeaders.set("access_token", accessToken);
                                                 httpHeaders.set("priority", safe(headers.getPriority()));
                                         })
                                 .bodyValue(fetchSlotsRequest)
@@ -354,7 +345,7 @@ public class WebClientServices {
         }
 
         public Mono<ResponseEntity<GlobalRespons>> bookSlots(UserHeaderModel headers,
-                        BookSlotsRequest request,String timesLog) {
+                        BookSlotsRequest request,String timesLog, String accessToken) {
 
                 String xTrace = GenerateCookie.generateRequestId();
 
@@ -390,7 +381,7 @@ public class WebClientServices {
                                                 httpHeaders.set("session-token", GenerateCookie.generateSessionToken());
                                                 httpHeaders.set("cookie", GenerateCookie.generateCfBmCookie());
                                                 httpHeaders.set("x-app-locale", safe(headers.getAppLocale()));
-                                                httpHeaders.set("access_token", headers.getAccessToken());
+                                                httpHeaders.set("access_token", accessToken);
                                                 httpHeaders.set("priority", safe(headers.getPriority()));
                                         })
                                 .bodyValue(request)
