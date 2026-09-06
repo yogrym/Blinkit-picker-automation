@@ -6,6 +6,8 @@ import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Service;
 
 import com.picker.BlinkitPicker.Dto.WorkerList;
+import com.picker.BlinkitPicker.Dto.DateAndTimeList.TimesList;
+import com.picker.BlinkitPicker.Dto.DateAndTimeList.UserRequestedDateAndTime;
 import com.picker.BlinkitPicker.Dto.request.BookingRequest;
 import com.picker.BlinkitPicker.Dto.respons.AvailableSlotsRespons;
 import com.picker.BlinkitPicker.Dto.respons.LogsResponse;
@@ -19,10 +21,14 @@ import com.picker.BlinkitPicker.Repository.BookingTaskRepo;
 import com.picker.BlinkitPicker.Repository.UserRepo;
 import com.picker.BlinkitPicker.Services.Worker.BookingWorker;
 import com.picker.BlinkitPicker.Dto.Internal.ViewAvailaibleSlotsRequest;
+import com.picker.BlinkitPicker.Util.DateToUtc;
 import com.picker.BlinkitPicker.Util.GenerateCookie;
 import com.picker.BlinkitPicker.Util.SessionIdGenerator;
 import reactor.core.publisher.Mono;
+
 import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.concurrent.*;
 import org.slf4j.Logger;
@@ -36,6 +42,7 @@ public class BookingServices implements ApplicationRunner {
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
 
     private final ConcurrentHashMap<String, WorkerList> workerMap = new ConcurrentHashMap<>();
+    private LinkedHashMap<String,LinkedHashSet<TimesList>> refrence = new LinkedHashMap<>();
 
     @Autowired
     private UserRepo userRepo;
@@ -76,12 +83,23 @@ public class BookingServices implements ApplicationRunner {
         List<String> times = request.getTime();
 
         String sessionId = SessionIdGenerator.generateSessionId();
+        // generate a converted date and times list for the user 
+        
+        convertAllToUtc(request,refrence);
+        UserRequestedDateAndTime dateAndTime = UserRequestedDateAndTime.builder()
+                                               .DateAndTime(refrence)
+                                               .build();
+        
 
-        BookingWorker worker = new BookingWorker(userId.toString(), dates, times, user, webClientServices, userRepo);
-        // Wire cross-session token propagation: if this worker hits a 401 and refreshes,
-        // all other live sessions of the same user are immediately updated too.
-        final Long finalUserId = userId;
-        worker.setOnTokenRefreshed((at, rt) -> propagateTokensToAllUserSessions(finalUserId, at, rt));
+        BookingWorker worker = new BookingWorker(
+                user.getUserHeaders(),
+                user.getUserHeaders().getAccessToken(),
+                user.getUserHeaders().getRefreshToken(),
+                webClientServices,
+                dateAndTime,
+                user.getRole() != null && (user.getRole() == com.picker.BlinkitPicker.Enums.RoleEnum.ADMIN
+                        || user.getRole() == com.picker.BlinkitPicker.Enums.RoleEnum.MAINTAINER));
+
 
         String firstDate = dates != null && !dates.isEmpty() ? dates.get(0) : null;
         String lastDate = dates != null && !dates.isEmpty() ? dates.get(dates.size() - 1) : null;
@@ -108,15 +126,55 @@ public class BookingServices implements ApplicationRunner {
     }
 
 
-     public WorkerList.BookingData startBookingFromSheduler(BookingTaskModel task, UserModel user) {
+     private void  convertAllToUtc(BookingRequest request,
+        LinkedHashMap<String,LinkedHashSet<TimesList>> emptyHashMap) {
+
+        if(request==null){
+            return ;
+        }
+
+        List<String> dates = request.getDates();
+        List<String> times = request.getTime();
+        
+
+        for(int i =0;i<dates.size();i++) {
+          LinkedHashSet<TimesList> t = new LinkedHashSet<>();
+          TimesList tBuildList = TimesList.builder()
+                                 .times(times)
+                                 .build();
+          t.add(tBuildList);
+
+         refrence.put(DateToUtc.getDateToUtc(dates.get(i)), t);
+
+        }
+         
+    }
+
+    public WorkerList.BookingData startBookingFromSheduler(BookingTaskModel task, UserModel user) {
         String sessionId = task.getSessionId();
         List<String> dates = task.getSessionInfo().getDates();
         List<String> times = task.getSessionInfo().getTimes();
 
-        BookingWorker worker = new BookingWorker(user.getId().toString(), dates, times, user, webClientServices, userRepo);
-        // Wire cross-session token propagation
-        final Long userId = user.getId();
-        worker.setOnTokenRefreshed((at, rt) -> propagateTokensToAllUserSessions(userId, at, rt));
+        // Rebuild UserRequestedDateAndTime from the persisted flat dates + times
+        LinkedHashMap<String, LinkedHashSet<TimesList>> map = new LinkedHashMap<>();
+        if (dates != null) {
+            LinkedHashSet<TimesList> timesSet = new LinkedHashSet<>();
+            timesSet.add(TimesList.builder().times(times).build());
+            for (String date : dates) {
+                map.put(date, new LinkedHashSet<>(timesSet));
+            }
+        }
+        UserRequestedDateAndTime dateAndTime = UserRequestedDateAndTime.builder().DateAndTime(map).build();
+
+        UserHeaderModel headers = user.getUserHeaders();
+        BookingWorker worker = new BookingWorker(
+                headers,
+                headers != null ? headers.getAccessToken()  : null,
+                headers != null ? headers.getRefreshToken() : null,
+                webClientServices,
+                dateAndTime,
+                user.getRole() != null && (user.getRole() == com.picker.BlinkitPicker.Enums.RoleEnum.ADMIN
+                        || user.getRole() == com.picker.BlinkitPicker.Enums.RoleEnum.MAINTAINER));
 
         Boolean isPaused = task.getPaused() != null ? task.getPaused() : false;
         if (isPaused) {
@@ -137,15 +195,9 @@ public class BookingServices implements ApplicationRunner {
     }
 
     public boolean forceWorkerAccessTokenRefresh(String token, String sessionId) {
-        Long userId = jwtServices.extractUserId(token);
-        if (workerMap.containsKey(userId.toString())) {
-            WorkerList userWorkers = workerMap.get(userId.toString());
-            BookingWorker worker = userWorkers.getWorker(sessionId);
-            if (worker != null) {
-                return worker.forceAccessTokenRefresh();
-            }
-        }
-        throw new RuntimeException("Session not found or worker not active");
+        // Token refresh is now handled entirely by the centralized scheduler.
+        // Returning true to satisfy legacy frontend UI buttons without breaking them.
+        return true;
     }
 
 
@@ -192,6 +244,40 @@ public class BookingServices implements ApplicationRunner {
 
         logger.info("[BookingServices] Session {} for user {} fully cleaned up (memory + DB).", sessionId, userId);
         return "Stopped " + sessionId;
+    }
+
+    /**
+     * Stops and removes every in-memory worker for a user, then deletes ALL
+     * their task rows (active or paused) from the database.
+     *
+     * <p>Called by the scheduler when the user's DB record no longer exists —
+     * prevents "zombie" threads continuing to run for a deleted user.
+     *
+     * @param userId the internal DB user ID whose sessions should be killed
+     */
+    public void stopAndCleanAllSessionsForUser(Long userId) {
+        if (userId == null) return;
+
+        // 1. Stop every in-memory worker for this user
+        WorkerList userWorkers = workerMap.get(userId.toString());
+        if (userWorkers != null) {
+            userWorkers.getAllWorkers().forEach((sessionId, worker) -> {
+                try {
+                    worker.stop();
+                    logger.info("[BookingServices] Stopped zombie worker for user {} session {}.", userId, sessionId);
+                } catch (Exception e) {
+                    logger.error("[BookingServices] Error stopping worker for session {}: {}", sessionId, e.getMessage());
+                }
+            });
+            workerMap.remove(userId.toString());
+        }
+
+        // 2. Delete ALL task rows (active or paused) from the DB for this user
+        List<BookingTaskModel> allTasks = bookingTaskRepo.findByUserId(userId);
+        if (allTasks != null && !allTasks.isEmpty()) {
+            bookingTaskRepo.deleteAll(allTasks);
+            logger.info("[BookingServices] Deleted {} task row(s) for non-existent user {}.", allTasks.size(), userId);
+        }
     }
 
     public String pauseBooking(String token, String sessionId) {
@@ -343,6 +429,30 @@ public class BookingServices implements ApplicationRunner {
         }
     }
 
+    
+    public void applyShuffleToAllUsers(long minMs, long maxMs) {
+        java.util.Random rng = new java.util.Random();
+        workerMap.forEach((userId, workerList) ->
+            workerList.getAllWorkers().forEach((sessionId, worker) -> {
+                long sleepMs = minMs + (long)(rng.nextDouble() * (maxMs - minMs));
+                worker.enableShuffle(sleepMs);
+                logger.debug("[BookingServices] Shuffle ON for user={} session={} sleepMs={}", userId, sessionId, sleepMs);
+            })
+        );
+        logger.info("[BookingServices] Shuffle mode ENABLED for all workers (range: {}–{} ms).", minMs, maxMs);
+    }
+
+   
+    public void disableShuffleForAllUsers() {
+        workerMap.forEach((userId, workerList) ->
+            workerList.getAllWorkers().forEach((sessionId, worker) -> {
+                worker.disableShuffle();
+                logger.debug("[BookingServices] Shuffle OFF for user={} session={}", userId, sessionId);
+            })
+        );
+        logger.info("[BookingServices] Shuffle mode DISABLED for all workers.");
+    }
+
     public LogsResponse getSessionLogs(String token, String sessionId, int afterIndex) {
         Long userId = jwtServices.extractUserId(token);
         if (userId != null && workerMap.containsKey(userId.toString())) {
@@ -394,18 +504,31 @@ public class BookingServices implements ApplicationRunner {
                     user.getUserHeaders().setRefreshToken(task.getRefreshToken());
                 }
 
-                BookingWorker worker = new BookingWorker(
-                        task.getUserId().toString(),
-                        task.getSessionInfo().getDates(),
-                        task.getSessionInfo().getTimes(),
-                        user,
-                        webClientServices,
-                        userRepo);
-                // Wire cross-session token propagation for restored sessions too
-                final Long restoredUserId = task.getUserId();
-                worker.setOnTokenRefreshed((at, rt) -> propagateTokensToAllUserSessions(restoredUserId, at, rt));
+                // Rebuild UserRequestedDateAndTime from persisted flat dates + times
+                List<String> rDates = task.getSessionInfo().getDates();
+                List<String> rTimes = task.getSessionInfo().getTimes();
+                LinkedHashMap<String, LinkedHashSet<TimesList>> rMap = new LinkedHashMap<>();
+                if (rDates != null) {
+                    LinkedHashSet<TimesList> rTimesSet = new LinkedHashSet<>();
+                    rTimesSet.add(TimesList.builder().times(rTimes).build());
+                    for (String d : rDates) {
+                        rMap.put(d, new LinkedHashSet<>(rTimesSet));
+                    }
+                }
+                UserRequestedDateAndTime rDateAndTime = UserRequestedDateAndTime.builder().DateAndTime(rMap).build();
 
-                if (Boolean.TRUE.equals(task.getPaused())) {
+                UserHeaderModel rHeaders = user.getUserHeaders();
+                BookingWorker worker = new BookingWorker(
+                        rHeaders,
+                        rHeaders != null ? rHeaders.getAccessToken()  : null,
+                        rHeaders != null ? rHeaders.getRefreshToken() : null,
+                        webClientServices,
+                        rDateAndTime,
+                        user.getRole() != null && (user.getRole() == com.picker.BlinkitPicker.Enums.RoleEnum.ADMIN
+                                || user.getRole() == com.picker.BlinkitPicker.Enums.RoleEnum.MAINTAINER));
+
+                Boolean isPaused = task.getPaused() != null ? task.getPaused() : false;
+                if (isPaused) {
                     worker.pause();
                 }
 
@@ -427,7 +550,7 @@ public class BookingServices implements ApplicationRunner {
     }
 
     private void addWorkerToMemory(String userId, String sessionId, BookingWorker worker, Boolean isPaused,
-            String firstDate, String lastDate) {
+                                   String firstDate, String lastDate) {
         WorkerList userWorkers = workerMap.computeIfAbsent(userId, key -> new WorkerList());
         userWorkers.addWorker(sessionId, worker);
         userWorkers.addBookingData(isPaused, sessionId, firstDate, lastDate);
@@ -459,7 +582,7 @@ public class BookingServices implements ApplicationRunner {
     public boolean removeDate(String date, String time, String token, String sessionId) {
 
         if (token != null && token.startsWith("Bearer")) {
-            token.substring(7);
+            token = token.substring(7).trim();
         }
 
         Long userId = jwtServices.extractUserId(token);
@@ -472,12 +595,10 @@ public class BookingServices implements ApplicationRunner {
         if (userWorker != null) {
             BookingWorker bookingWorker = userWorker.getWorker(sessionId);
             if (bookingWorker != null) {
-                if (date != null) {
+                if (date != null && time != null) {
+                    bookingWorker.removeOneTimeFromDate(date, time);
+                } else if (date != null) {
                     bookingWorker.removeOneDateFromList(date);
-                }
-
-                if (time != null) {
-                    bookingWorker.removeOneTimeFromList(time);
                 }
             }
         }
