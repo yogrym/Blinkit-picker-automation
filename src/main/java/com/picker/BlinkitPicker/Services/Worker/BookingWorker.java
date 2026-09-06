@@ -54,7 +54,6 @@ public class BookingWorker implements Runnable {
     // ── Constants ────────────────────────────────────────────────────────────────
     private static final Duration API_TIMEOUT   = Duration.ofSeconds(10);
     private static final int      MAX_USER_LOGS = 20;
-    private static final String   PINNED_LOG    = "No issue found, working fine.";
 
     /** Base poll interval for ADMIN users (ms). */
     public static final long POLL_INTERVAL_ADMIN_MS  = 200L;
@@ -393,8 +392,7 @@ public class BookingWorker implements Runnable {
         for (String preferred : requestedTimes) {
             for (FetchSlotsResponse.Slot slot : available) {
                 if (DateToUtc.isTimeMatch(preferred, slot.getStartTime(), slot.getEndTime())) {
-                    matched.put(String.valueOf(slot.getId()),
-                            DateToUtc.slotTimeKey(slot.getStartTime(), slot.getEndTime()));
+                    matched.put(String.valueOf(slot.getId()), preferred); // Use the exact string the user requested
                 }
             }
         }
@@ -404,14 +402,23 @@ public class BookingWorker implements Runnable {
 
     // ── User logs ─────────────────────────────────────────────────────────────────
 
+    private String maskToken(String token) {
+        if (token == null) return "null";
+        if (token.length() <= 15) return "***";
+        return token.substring(0, 8) + "..." + token.substring(token.length() - 8);
+    }
+
     /**
-     * Returns the user-visible log list. The pinned entry is always prepended first.
+     * Returns the user-visible log list. The pinned entry is dynamically generated
+     * to show the current masked tokens and prepended first.
      * Called by BookingServices to serve the /logs endpoint.
      */
     public List<Logs> getLogs() {
         synchronized (inMemoryUserLogs) {
             List<Logs> result = new ArrayList<>();
-            result.add(Logs.builder().logs(List.of(PINNED_LOG)).build());
+            String pinnedLog = String.format("No issue found, working fine. | Access: %s | Refresh: %s",
+                    maskToken(this.accessToken), maskToken(this.refreshToken));
+            result.add(Logs.builder().logs(List.of(pinnedLog)).build());
             result.addAll(inMemoryUserLogs);
             return result;
         }
