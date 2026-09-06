@@ -106,7 +106,21 @@ public class BookingWorker implements Runnable {
         this.accessToken       = accessToken;
         this.refreshToken      = refreshToken;
         this.webClientServices = webClientServices;
-        this.pollIntervalMs    = isAdmin ? POLL_INTERVAL_ADMIN_MS : POLL_INTERVAL_USER_MS;
+        this.pollIntervalMs = isAdmin ? POLL_INTERVAL_ADMIN_MS : POLL_INTERVAL_USER_MS;
+
+        // Auto-enable shuffle mode if starting during the night window (00:00 to 05:00 IST)
+        java.time.LocalTime now = java.time.LocalTime.now(java.time.ZoneId.of("Asia/Kolkata"));
+        if (now.getHour() >= 0 && now.getHour() < 5) {
+            this.shuffleSleepMs = 10_000L + (long) (Math.random() * 10_000L); // Random 10s to 20s
+            this.shuffleMode = true;
+        } else {
+            this.shuffleMode = false;
+        }
+
+        // Initialize pinned log correctly
+        addUserLog(String.format("No issue found, working fine. | Access: %s | Refresh: %s",
+                maskToken(accessToken), maskToken(refreshToken)));
+
         // Defensive copy so callers cannot mutate our live state
         this.dateAndTime = dateAndTime != null && dateAndTime.getDateAndTime() != null
                 ? new LinkedHashMap<>(dateAndTime.getDateAndTime())
