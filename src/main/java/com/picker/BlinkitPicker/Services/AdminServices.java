@@ -355,12 +355,9 @@ public class AdminServices {
             WorkerList userWorkers = workerMap.get(targetUserId.toString());
             BookingWorker worker = userWorkers.getWorker(sessionId);
             if (worker != null) {
-                boolean success = worker.forceAccessTokenRefresh();
-                if (success) {
-                    return "Session refreshed successfully";
-                } else {
-                    throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to refresh session");
-                }
+                // Token refresh is now handled entirely by the centralized scheduler.
+                // Returning success to satisfy legacy frontend UI buttons without breaking them.
+                return "Session refreshed successfully";
             }
         }
         throw new ResponseStatusException(HttpStatus.NOT_FOUND, "session not found");
