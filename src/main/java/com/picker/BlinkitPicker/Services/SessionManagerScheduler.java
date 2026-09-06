@@ -20,14 +20,14 @@ public class SessionManagerScheduler {
         this.bookingServices = bookingServices;
     }
 
-    @Scheduled(cron = "0 0 0 * * *")
+    @Scheduled(cron = "0 0 0 * * *", zone = "Asia/Kolkata")
     public void enableShuffleAtMidnight() {
         logger.info("[SessionManager] Midnight reached — enabling shuffle ({} s – {} s) for all workers.",
                 SHUFFLE_MIN_MS / 1000, SHUFFLE_MAX_MS / 1000);
         bookingServices.applyShuffleToAllUsers(SHUFFLE_MIN_MS, SHUFFLE_MAX_MS);
     }
 
-    @Scheduled(cron = "0 0 5 * * *")
+    @Scheduled(cron = "0 0 5 * * *", zone = "Asia/Kolkata")
     public void disableShuffleAtFiveAm() {
         logger.info("[SessionManager] 05:00 AM reached — disabling shuffle, workers resuming normal poll intervals.");
         bookingServices.disableShuffleForAllUsers();
