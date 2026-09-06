@@ -11,7 +11,6 @@ import com.picker.BlinkitPicker.Model.UserHeaderModel;
 import com.picker.BlinkitPicker.Model.UserModel;
 import com.picker.BlinkitPicker.Repository.BookingTaskRepo;
 import com.picker.BlinkitPicker.Repository.UserRepo;
-import com.picker.BlinkitPicker.Services.Worker.BookingWorker;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -29,46 +28,36 @@ public class SchedulerServices {
 
     private static final long REFRESH_INTERVAL_MINUTES = 20;
 
-    private final BookingServices bookingServices;
-    private final BookingTaskRepo bookingTaskRepo;
-    private final UserRepo userRepo;
+    private final BookingServices   bookingServices;
+    private final BookingTaskRepo   bookingTaskRepo;
+    private final UserRepo          userRepo;
     private final WebClientServices webClientServices;
 
     public SchedulerServices(BookingServices bookingServices, BookingTaskRepo bookingTaskRepo,
             UserRepo userRepo, WebClientServices webClientServices) {
-        this.bookingServices = bookingServices;
-        this.bookingTaskRepo = bookingTaskRepo;
-        this.userRepo = userRepo;
+        this.bookingServices   = bookingServices;
+        this.bookingTaskRepo   = bookingTaskRepo;
+        this.userRepo          = userRepo;
         this.webClientServices = webClientServices;
     }
 
     /**
      * Runs every 10 minutes.
      *
-     * <p><b>Correct multi-session logic:</b>
-     * <ol>
-     *   <li>Load all active {@link BookingTaskModel} rows.</li>
-     *   <li>Group them by {@code userId}.</li>
-     *   <li>For each user, check the <em>oldest</em> {@code lastRefreshedAt} across all
-     *       of that user's sessions. If any session is due for a refresh, refresh the
-     *       token <strong>once</strong> (using any live worker of that user).</li>
-     *   <li>On success, call {@link BookingServices#propagateTokensToAllUserSessions}
-     *       which atomically updates <strong>all</strong> in-memory workers
-     *       <strong>and</strong> all DB task rows for that user in one go.</li>
-     *   <li>Also persist the new tokens to the {@link UserModel} row (the "user exists"
-     *       guard from the old code is preserved — but token propagation happens
-     *       regardless, via step 4).</li>
-     * </ol>
+     * <p>For users <b>with active tasks</b>: checks {@code lastRefreshedAt} — if 20 min
+     * have elapsed, refreshes their token once and pushes the result to every session
+     * row in the DB, every live in-memory worker, and the UserModel row.
      *
-     * <p>This eliminates the stale-token bug where a session started after the
-     * scheduler ran would have different tokens to the ones saved in the other sessions.
-     * All sessions for a given user always share the same token pair.
+     * <p>In both cases, if the UserModel row no longer exists in the database, all
+     * in-memory workers and task rows for that user are immediately stopped and deleted
+     * to prevent zombie threads consuming server resources.
      */
     @Scheduled(fixedRate = 600000) // every 10 minutes
     public void proactivelyRefreshTokens() {
         logger.info("[Scheduler] Running token refresh check (threshold: {} min)...", REFRESH_INTERVAL_MINUTES);
         try {
             List<BookingTaskModel> activeTasks = bookingTaskRepo.findByActiveTrue();
+
             if (activeTasks == null || activeTasks.isEmpty()) {
                 logger.info("[Scheduler] No active tasks found. Nothing to refresh.");
                 return;
@@ -88,9 +77,8 @@ public class SchedulerServices {
             for (Map.Entry<Long, List<BookingTaskModel>> entry : tasksByUser.entrySet()) {
                 Long userId = entry.getKey();
                 List<BookingTaskModel> userTasks = entry.getValue();
-
                 try {
-                    processUserTokenRefresh(userId, userTasks);
+                    processUserWithTasks(userId, userTasks);
                 } catch (Exception e) {
                     logger.error("[Scheduler] Error processing token refresh for user {}: {}", userId, e.getMessage(), e);
                 }
@@ -102,17 +90,23 @@ public class SchedulerServices {
     }
 
     /**
-     * Handles the token-refresh cycle for a single user's batch of active sessions.
+     * Handles the full token-refresh cycle for one user who has active sessions.
      *
-     * <p>Checks whether the <em>earliest</em> (most stale) {@code lastRefreshedAt}
-     * across all sessions of this user has crossed the 20-minute threshold.
-     * If so, performs a single Cognito token refresh and pushes the result to
-     * every session at once via {@link BookingServices#propagateTokensToAllUserSessions}.
+     * <ol>
+     *   <li>Checks if any session's {@code lastRefreshedAt} is ≥ 20 minutes old.
+     *       If not, skips — no work needed.</li>
+     *   <li>Fetches the user directly from the DB (single source of truth for credentials).
+     *       If the user no longer exists, kills all their in-memory workers and deletes
+     *       every task row, then returns.</li>
+     *   <li>Calls the Cognito refresh API once using the DB user's credentials.</li>
+     *   <li>Saves the new tokens back to the UserModel row.</li>
+     *   <li>Pushes the new tokens to all task rows and all live in-memory workers via
+     *       {@link BookingServices#propagateTokensToAllUserSessions}.</li>
+     * </ol>
      */
-    private void processUserTokenRefresh(Long userId, List<BookingTaskModel> userTasks) {
+    private void processUserWithTasks(Long userId, List<BookingTaskModel> userTasks) {
 
-        // ── 1. Find the most stale lastRefreshedAt among all sessions ─────────────
-        // If ANY session is overdue, we refresh for the whole user.
+        // ── 1. Check if any session is overdue for a refresh ──────────────────────
         boolean anySessionNeedsRefresh = userTasks.stream().anyMatch(task -> {
             LocalDateTime lastRefreshed = task.getLastRefreshedAt();
             return (lastRefreshed == null)
@@ -124,84 +118,75 @@ public class SchedulerServices {
             return;
         }
 
-        // ── 2. Find any live in-memory worker for this user to perform the refresh ─
-        // We only need one — the tokens are shared across all sessions.
-        BookingWorker representativeWorker = null;
-        for (BookingTaskModel task : userTasks) {
-            BookingWorker w = bookingServices.getWorkerForSession(userId, task.getSessionId());
-            if (w != null) {
-                representativeWorker = w;
-                break;
-            }
-        }
-
-        if (representativeWorker == null) {
-            logger.warn("[Scheduler] No live worker found for user {} — cannot refresh tokens.", userId);
+        // ── 2. Fetch user from DB — this is the single source of truth ────────────
+        UserModel user = userRepo.findById(userId).orElse(null);
+        if (user == null) {
+            // User was deleted from the DB but their threads are still running in RAM.
+            // Kill everything immediately to prevent zombie workers.
+            logger.warn("[Scheduler] User {} not found in DB — stopping all sessions and cleaning up tasks.", userId);
+            bookingServices.stopAndCleanAllSessionsForUser(userId);
             return;
         }
 
-        // ── 3. Perform the actual Cognito token refresh (once per user) ────────────
-        UserHeaderModel workerHeaders = representativeWorker.getHeaders();
-        String currentRefreshToken = representativeWorker.getRefreshToken();
+        // ── 3. Load credentials from the DB user row ──────────────────────────────
+        UserHeaderModel headers      = user.getUserHeaders();
+        String          refreshToken = (headers != null) ? headers.getRefreshToken() : null;
 
-        if (workerHeaders == null || currentRefreshToken == null) {
-            logger.warn("[Scheduler] Cannot refresh: headers or refreshToken null for user {}", userId);
+        if (headers == null || refreshToken == null) {
+            logger.warn("[Scheduler] Cannot refresh: headers or refreshToken is null in DB for user {}.", userId);
             return;
         }
 
-        logger.info("[Scheduler] Refreshing Cognito token for user {} ({} active session(s)).",
-                userId, userTasks.size());
+        // ── 4. Call Cognito refresh API once for this user ────────────────────────
+        logger.info("[Scheduler] Refreshing token for user {} ({} active session(s)).", userId, userTasks.size());
 
-        MultiValueMap<String, String> formData = new LinkedMultiValueMap<>();
-        formData.add("refresh_token", currentRefreshToken);
-
-        CognitoRefreshTokenRespons response;
-        try {
-            response = webClientServices.refreshToken(formData, workerHeaders);
-        } catch (Exception e) {
-            logger.error("[Scheduler] Cognito refresh API call failed for user {}: {}", userId, e.getMessage());
-            return;
-        }
-
-        if (response == null || !Boolean.TRUE.equals(response.getSuccess())) {
-            logger.warn("[Scheduler] Cognito token refresh returned failure for user {}.", userId);
-            return;
-        }
+        CognitoRefreshTokenRespons response = callRefreshApi(headers, refreshToken, userId);
+        if (response == null) return; // already logged inside callRefreshApi
 
         String newAccessToken  = response.getAccessToken();
         String newRefreshToken = response.getRefreshToken();
 
-        if (newAccessToken == null || newRefreshToken == null) {
-            logger.warn("[Scheduler] Cognito refresh returned null tokens for user {}.", userId);
-            return;
-        }
+        // ── 5. Persist new tokens to the UserModel row ────────────────────────────
+        headers.setAccessToken(newAccessToken);
+        headers.setRefreshToken(newRefreshToken);
+        user.setUserHeaders(headers);
+        userRepo.save(user);
+        logger.info("[Scheduler] UserModel tokens updated in DB for user {}.", userId);
 
-        // ── 4. Propagate new tokens → all in-memory workers + all DB task rows ────
+        // ── 6. Push new tokens to all task rows + all live in-memory workers ──────
         // This single call handles every session of the user atomically,
         // preserving paused/active state and updating lastRefreshedAt everywhere.
         bookingServices.propagateTokensToAllUserSessions(userId, newAccessToken, newRefreshToken);
 
-        // ── 5. Persist new tokens to the UserModel row ────────────────────────────
-        // The old "user exists" guard is intentionally preserved: if the user row
-        // was somehow deleted, skip the user-model save but keep the task/worker
-        // tokens updated (they were already updated in step 4).
-        UserModel user = userRepo.findById(userId).orElse(null);
-        if (user == null) {
-            logger.warn("[Scheduler] User {} not found in DB — skipping UserModel token save. " +
-                    "Sessions are still updated.", userId);
-        } else {
-            UserHeaderModel updatedHeaders = representativeWorker.getHeaders();
-            if (updatedHeaders != null) {
-                // Mirror the new tokens into the header object stored on the user row
-                updatedHeaders.setAccessToken(newAccessToken);
-                updatedHeaders.setRefreshToken(newRefreshToken);
-                user.setUserHeaders(updatedHeaders);
-                userRepo.save(user);
-                logger.info("[Scheduler] UserModel tokens updated for user {}.", userId);
-            }
+        logger.info("[Scheduler] Token refresh complete for user {} — {} session(s) updated.", userId, userTasks.size());
+    }
+
+    /**
+     * Calls the Cognito token-refresh API and returns the response.
+     * Returns {@code null} if the call failed or the response was invalid/null tokens.
+     */
+    private CognitoRefreshTokenRespons callRefreshApi(UserHeaderModel headers, String refreshToken, Long userId) {
+        MultiValueMap<String, String> formData = new LinkedMultiValueMap<>();
+        formData.add("refresh_token", refreshToken);
+
+        CognitoRefreshTokenRespons response;
+        try {
+            response = webClientServices.refreshToken(formData, headers);
+        } catch (Exception e) {
+            logger.error("[Scheduler] Cognito refresh API call failed for user {}: {}", userId, e.getMessage());
+            return null;
         }
 
-        logger.info("[Scheduler] Token refresh complete for user {} — {} session(s) updated.",
-                userId, userTasks.size());
+        if (response == null || !Boolean.TRUE.equals(response.getSuccess())) {
+            logger.warn("[Scheduler] Cognito token refresh returned failure for user {}.", userId);
+            return null;
+        }
+
+        if (response.getAccessToken() == null || response.getRefreshToken() == null) {
+            logger.warn("[Scheduler] Cognito refresh returned null tokens for user {}.", userId);
+            return null;
+        }
+
+        return response;
     }
 }
