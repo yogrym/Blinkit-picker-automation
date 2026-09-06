@@ -6,7 +6,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
-import org.hibernate.engine.profile.Fetch;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.http.ResponseEntity;
@@ -128,7 +127,7 @@ public class GlobalServices {
                                     .build())
                             .build();
 
-                    FetchSlotsResponse fetchSlotsResponse = webClientServices.getSlotsDetails(headers,fetchSlotsRequest);
+                    FetchSlotsResponse fetchSlotsResponse = webClientServices.getSlotsDetails(headers, fetchSlotsRequest, headers.getAccessToken());
 
                     if(fetchSlotsResponse != null && fetchSlotsResponse.getData() != null && fetchSlotsResponse.getData().getStores() != null) {
                         for(FetchSlotsResponse.Store store: fetchSlotsResponse.getData().getStores()) {
