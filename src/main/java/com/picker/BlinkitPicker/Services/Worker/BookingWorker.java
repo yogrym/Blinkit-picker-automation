@@ -125,11 +125,15 @@ public class BookingWorker implements Runnable {
     public void enableShuffle(long sleepMs) {
         this.shuffleSleepMs = sleepMs;
         this.shuffleMode    = true;
+        addUserLog("Lazy mode turned on, it will automatically turn off at 5 AM.");
     }
 
     /** Disable shuffle mode: worker reverts to its role-based pollIntervalMs. */
     public void disableShuffle() {
-        this.shuffleMode = false;
+        if (this.shuffleMode) {
+            this.shuffleMode = false;
+            addUserLog("Lazy mode turned off, resuming normal speed.");
+        }
     }
 
     // ── Main loop ─────────────────────────────────────────────────────────────────
