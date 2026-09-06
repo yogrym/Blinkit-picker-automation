@@ -21,4 +21,6 @@ public interface BookingTaskRepo extends JpaRepository<BookingTaskModel, String>
      * across every session of a given user.
      */
     List<BookingTaskModel> findByUserIdAndActiveTrue(Long userId);
+
+    List<BookingTaskModel> findByUserId(Long userId);
 }
